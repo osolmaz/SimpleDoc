@@ -4,7 +4,7 @@
 
 ## MUST DO SETUP
 
-**Attention agent!** This file is a template for creating insructions on how to create documentation in this repository. The placeholder sections should be filled in, before anything else.
+**Attention agent!** This file is a template for creating instructions on how to create documentation in this repository. The placeholder sections should be filled in, before anything else.
 
 1. Fetch the most recent SimpleDoc specification from https://github.com/osolmaz/SimpleDoc and copy it below, replacing the placeholder content.
 2. Ask the user about their preferences in documentation style: Do they prefer a certain style of writing, a certain tone, a certain level of technicality, a certain way to create implementation plans, etc. Do a few rounds of back-and-forth to get the user's preferences, and use the output to populate the placeholder content in the Preferences in Documentation Style section.

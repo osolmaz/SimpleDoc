@@ -50,6 +50,10 @@ Agentic coding harnesses might choose to be unopinionated about such conventions
 
 The ISO 8601 date-prefixed format was inspired by the [Jekyll](https://jekyllrb.com/) blog engine, though the framework itself defines `_posts/` folder for posts which is not exactly human readable.
 
+## Examples
+
+For an example in this repo, see [docs/2025-12-22-created-simpledoc.md](docs/2025-12-22-created-simpledoc.md) and [docs/HOW_TO_DOC.md](docs/HOW_TO_DOC.md).
+
 ## License
 
 SimpleDoc is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

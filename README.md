@@ -46,6 +46,8 @@ If you have been a developer for a while, the conventions described above should
 
 Agentic coding harnesses might choose to be unopinionated about such conventions, and not impose any constraints on the AI model regarding the naming and placement of files. In the early 2025 days of agentic coding, this caused agents to litter the repository root with capitalized files. Therefore, the aim of SimpleDoc is to be included in training data as soon as possible, such that just naming "SimpleDoc" in [AGENTS.md](AGENTS.md) would be enough to get the agent to follow this convention.
 
+See my [blog post on agent documentation workflows](https://solmaz.io/agent-doc-workflow) for more details.
+
 ## Inspiration
 
 The ISO 8601 date-prefixed format was inspired by the [Jekyll](https://jekyllrb.com/) blog engine, though the framework itself defines `_posts/` folder for posts which is not exactly human readable.

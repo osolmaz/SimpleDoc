@@ -42,7 +42,7 @@ Notes:
 
 - Appends the instruction line to `AGENTS.md` (only if it’s not already present).
 - Creates `docs/` (if needed).
-- Downloads the latest [HOW_TO_DOC.md](./docs/HOW_TO_DOC.md) template from the SimpleDoc repo and saves it to `docs/HOW_TO_DOC.md`.
+- Downloads the latest [HOW_TO_DOC.md](./HOW_TO_DOC.md) template from the SimpleDoc repo and saves it to `docs/HOW_TO_DOC.md`.
 
 ## After installation
 

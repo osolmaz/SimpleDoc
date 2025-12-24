@@ -1,10 +1,6 @@
-# Install SimpleDoc
+# Setup SimpleDoc in your agentic repository
 
-This installer is for repos that already have an `AGENTS.md` file (run from repo root).
-
-## Setup in your repo
-
-Run:
+This installer is for repos that already have an `AGENTS.md` file (run from repo root). Run the following script from repo root to set up SimpleDoc in your repository:
 
 ```bash
 bash <<'EOF'

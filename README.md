@@ -48,6 +48,10 @@ Agentic coding harnesses might choose to be unopinionated about such conventions
 
 See my [blog post on agent documentation workflows](https://solmaz.io/agent-doc-workflow) for more details.
 
+### Installation
+
+For setting up SimpleDoc in your agentic repository, see [INSTALL.md](./docs/INSTALL.md).
+
 ## Inspiration
 
 The ISO 8601 date-prefixed format was inspired by the [Jekyll](https://jekyllrb.com/) blog engine, though the framework itself defines `_posts/` folder for posts which is not exactly human readable.

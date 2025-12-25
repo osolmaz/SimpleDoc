@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { spawnSync } from "node:child_process";
 import process from "node:process";
 import { formatActions, planMigration, runMigrationPlan } from "./migrator.js";
 
@@ -10,6 +11,7 @@ type CliArgs = {
   yes: boolean;
   force: boolean;
   help: boolean;
+  authorOverride: string | null;
 };
 
 function printHelp(): void {
@@ -18,8 +20,8 @@ function printHelp(): void {
       "SimpleDoc CLI",
       "",
       "Usage:",
-      "  simpledoc migrate [--dry-run] [--yes] [--force]",
-      "  simpledoc [--dry-run] [--yes] [--force]   # defaults to `migrate`",
+      "  simpledoc migrate [--dry-run] [--yes] [--force] [--author \"Name <email>\"]",
+      "  simpledoc [--dry-run] [--yes] [--force] [--author \"Name <email>\"]   # defaults to `migrate`",
       "",
       "Commands:",
       "  migrate     One-step wizard to migrate a repo to SimpleDoc conventions",
@@ -28,6 +30,7 @@ function printHelp(): void {
       "  --dry-run   Print planned changes and exit",
       "  --yes       Apply defaults without prompts",
       "  --force     Run even if working tree is dirty",
+      "  --author    Override author for inserted frontmatter (otherwise uses git history)",
       "  --help      Show this help",
       "",
     ].join("\n"),
@@ -35,31 +38,59 @@ function printHelp(): void {
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const positional: string[] = [];
-  const flags: string[] = [];
-  for (const arg of argv.slice(2)) {
-    if (arg.startsWith("-")) flags.push(arg);
-    else positional.push(arg);
-  }
-
-  const command = (positional[0] ?? "migrate") as string;
-
   const args: CliArgs = {
     command: "migrate",
     dryRun: false,
     yes: false,
     force: false,
     help: false,
+    authorOverride: null,
   };
 
-  if (command !== "migrate") throw new Error(`Unknown command: ${command}`);
+  const rest = argv.slice(2);
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
 
-  for (const arg of flags) {
-    if (arg === "--dry-run") args.dryRun = true;
-    else if (arg === "--yes" || arg === "-y") args.yes = true;
-    else if (arg === "--force") args.force = true;
-    else if (arg === "--help" || arg === "-h") args.help = true;
-    else throw new Error(`Unknown argument: ${arg}`);
+    if (arg === "migrate") {
+      args.command = "migrate";
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      args.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--yes" || arg === "-y") {
+      args.yes = true;
+      continue;
+    }
+
+    if (arg === "--force") {
+      args.force = true;
+      continue;
+    }
+
+    if (arg === "--help" || arg === "-h") {
+      args.help = true;
+      continue;
+    }
+
+    if (arg === "--author") {
+      const value = rest[i + 1];
+      if (!value) throw new Error("Missing value for --author");
+      args.authorOverride = value;
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith("--author=")) {
+      args.authorOverride = arg.slice("--author=".length);
+      continue;
+    }
+
+    if (arg.startsWith("-")) throw new Error(`Unknown argument: ${arg}`);
+    throw new Error(`Unknown command: ${arg}`);
   }
 
   return args;
@@ -81,6 +112,23 @@ function limitLines(text: string, maxLines: number): string {
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function getGitConfiguredAuthor(): string | null {
+  const nameRes = spawnSync("git", ["config", "--get", "user.name"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const emailRes = spawnSync("git", ["config", "--get", "user.email"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+  const name = (nameRes.stdout ?? "").trim();
+  const email = (emailRes.stdout ?? "").trim();
+  if (!name && !email) return null;
+  if (name && email) return `${name} <${email}>`;
+  return name || email;
 }
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -169,6 +217,27 @@ export async function runCli(argv: string[]): Promise<void> {
           return;
         }
       }
+
+      if (frontmatterAdds.length > 0 && !args.authorOverride) {
+        const useGit = await confirm(rl, "Use per-file authors from git history for new frontmatter?", true);
+        if (!useGit) {
+          const suggested = getGitConfiguredAuthor();
+          const answer = (
+            await rl.question(
+              suggested
+                ? `Author to use for inserted frontmatter (Name <email>) [${suggested}]: `
+                : "Author to use for inserted frontmatter (Name <email>): ",
+            )
+          ).trim();
+          args.authorOverride = answer || suggested;
+          if (!args.authorOverride) {
+            process.stderr.write("Author is required when not using git history.\n");
+            process.exitCode = 2;
+            return;
+          }
+        }
+      }
+
       if (rootMoves.length > 0) {
         const ok = await confirm(rl, "Proceed with step 1 (move root markdown to docs/)?", true);
         if (!ok) {
@@ -207,7 +276,7 @@ export async function runCli(argv: string[]): Promise<void> {
   }
 
   try {
-    await runMigrationPlan(plan);
+    await runMigrationPlan(plan, { authorOverride: args.authorOverride });
   } catch (err) {
     process.stderr.write(`${getErrorMessage(err)}\n`);
     process.exitCode = 1;
@@ -215,4 +284,3 @@ export async function runCli(argv: string[]): Promise<void> {
   }
   process.stdout.write("Done. Review with `git status` / `git diff` and commit when ready.\n");
 }
-

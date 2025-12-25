@@ -433,7 +433,10 @@ async function applyRenames(plan: MigrationPlan, renames: RenameAction[]): Promi
   }
 }
 
-export async function runMigrationPlan(plan: MigrationPlan): Promise<void> {
+export async function runMigrationPlan(
+  plan: MigrationPlan,
+  options?: { authorOverride?: string | null },
+): Promise<void> {
   const renames = plan.actions.filter((a): a is RenameAction => a.type === "rename");
   const frontmatters = plan.actions.filter((a): a is FrontmatterAction => a.type === "frontmatter");
 
@@ -442,7 +445,7 @@ export async function runMigrationPlan(plan: MigrationPlan): Promise<void> {
   for (const action of frontmatters) {
     const frontmatter = buildFrontmatter({
       title: action.title,
-      author: action.author,
+      author: options?.authorOverride ?? action.author,
       date: action.date,
     });
     await writeFrontmatter(plan.repoRootAbs, action.path, frontmatter);

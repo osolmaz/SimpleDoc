@@ -65,6 +65,7 @@ Run it from a git repo:
 ```bash
 npx -y @simpledoc/simpledoc migrate --dry-run   # preview
 npx -y @simpledoc/simpledoc migrate             # interactive wizard
+npx -y @simpledoc/simpledoc migrate --author "Name <email>"   # override frontmatter author
 
 # or, from this repo:
 npm run migrate:dry                               # preview

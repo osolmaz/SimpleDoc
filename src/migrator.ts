@@ -1,9 +1,34 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 import { spawnSync } from "node:child_process";
 
-function runGit(args, { cwd }) {
+type FileMeta = {
+  dateIso: string;
+  date: string;
+  author: string;
+  name: string;
+  email: string;
+};
+
+export type RenameAction = { type: "rename"; from: string; to: string };
+export type FrontmatterAction = {
+  type: "frontmatter";
+  path: string;
+  title: string;
+  author: string;
+  date: string;
+};
+export type MigrationAction = RenameAction | FrontmatterAction;
+
+export type MigrationPlan = {
+  repoRootAbs: string;
+  repoRoot: string;
+  trackedSet: Set<string>;
+  dirty: boolean;
+  actions: MigrationAction[];
+};
+
+function runGit(args: string[], { cwd }: { cwd: string }): string {
   const res = spawnSync("git", args, {
     cwd,
     encoding: "utf8",
@@ -18,7 +43,7 @@ function runGit(args, { cwd }) {
   return res.stdout;
 }
 
-function getRepoRoot() {
+function getRepoRoot(): string {
   const res = spawnSync("git", ["rev-parse", "--show-toplevel"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -29,31 +54,31 @@ function getRepoRoot() {
   return res.stdout.trim();
 }
 
-function isDirty(cwd) {
+function isDirty(cwd: string): boolean {
   const out = runGit(["status", "--porcelain"], { cwd });
   return out.trim().length > 0;
 }
 
-function isMarkdownFile(filePath) {
+function isMarkdownFile(filePath: string): boolean {
   return filePath.endsWith(".md") || filePath.endsWith(".mdx");
 }
 
-function isLowercaseDocBaseName(baseName) {
+function isLowercaseDocBaseName(baseName: string): boolean {
   const name = baseName.replace(/\.(md|mdx)$/i, "");
   return /[a-z]/.test(name) && !/[A-Z]/.test(name);
 }
 
-function isDatePrefixedBaseName(baseName) {
+function isDatePrefixedBaseName(baseName: string): string | null {
   const m = baseName.match(/^(\d{4}-\d{2}-\d{2})-/);
   return m ? m[1] : null;
 }
 
-function isCapitalizedDoc(baseName) {
+function isCapitalizedDoc(baseName: string): boolean {
   const name = baseName.replace(/\.(md|mdx)$/i, "");
   return /[A-Z]/.test(name);
 }
 
-function slugifyBaseName(baseName) {
+function slugifyBaseName(baseName: string): string {
   const name = baseName.replace(/\.(md|mdx)$/i, "");
   const ext = baseName.slice(name.length);
 
@@ -68,7 +93,7 @@ function slugifyBaseName(baseName) {
   return `${slug}${ext}`;
 }
 
-function titleFromSlug(slug) {
+function titleFromSlug(slug: string): string {
   const words = slug
     .replace(/\.(md|mdx)$/i, "")
     .replace(/^\d{4}-\d{2}-\d{2}-/, "")
@@ -76,21 +101,21 @@ function titleFromSlug(slug) {
     .filter(Boolean);
   if (words.length === 0) return "Untitled";
   return words
-    .map((w) => (w ? w[0].toLocaleUpperCase("en-US") + w.slice(1) : w))
+    .map((w) => (w ? w[0]!.toLocaleUpperCase("en-US") + w.slice(1) : w))
     .join(" ");
 }
 
-function titleFromMarkdown(content) {
+function titleFromMarkdown(content: string): string | null {
   const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/);
   for (const line of lines) {
     const m = line.match(/^#\s+(.+)\s*$/);
-    if (m) return m[1].trim();
+    if (m) return m[1]!.trim();
     if (line.trim() !== "") break;
   }
   return null;
 }
 
-function hasFrontmatter(content) {
+function hasFrontmatter(content: string): boolean {
   const s = content.replace(/^\uFEFF/, "");
   if (!s.startsWith("---\n") && !s.startsWith("---\r\n")) return false;
   const end = s.indexOf("\n---", 4);
@@ -99,12 +124,12 @@ function hasFrontmatter(content) {
   return after.startsWith("---\n") || after.startsWith("---\r\n");
 }
 
-function yamlQuote(value) {
+function yamlQuote(value: string): string {
   const s = String(value).replace(/\r?\n/g, " ").trim();
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function buildFrontmatter({ title, author, date }) {
+function buildFrontmatter({ title, author, date }: { title: string; author: string; date: string }): string {
   return [
     "---",
     `title: ${yamlQuote(title)}`,
@@ -114,25 +139,28 @@ function buildFrontmatter({ title, author, date }) {
   ].join("\n");
 }
 
-function getCreationInfo(cwd, filePath) {
+function getCreationInfo(cwd: string, filePath: string): FileMeta | null {
   const out = runGit(["log", "--follow", "--format=%aI\t%aN\t%aE", "--", filePath], { cwd });
   const lines = out.trim().split("\n").filter(Boolean);
   if (lines.length === 0) return null;
-  const [dateIso, name, email] = lines[lines.length - 1].split("\t");
-  const date = dateIso.slice(0, 10);
-  const author = email ? `${name} <${email}>` : name;
-  return { dateIso, date, author, name, email };
+  const [dateIso, name, email] = lines[lines.length - 1]!.split("\t");
+  const date = dateIso!.slice(0, 10);
+  const author = email ? `${name} <${email}>` : name!;
+  return { dateIso: dateIso!, date, author, name: name!, email: email ?? "" };
 }
 
-async function getFileSystemInfo(repoRootAbs, filePath) {
+async function getFileSystemInfo(repoRootAbs: string, filePath: string): Promise<FileMeta> {
   const abs = path.join(repoRootAbs, ...filePath.split("/"));
   const stat = await fs.stat(abs);
-  const dateIso = stat.birthtime && Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtime.toISOString() : stat.mtime.toISOString();
+  const dateIso =
+    stat.birthtime && Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0
+      ? stat.birthtime.toISOString()
+      : stat.mtime.toISOString();
   const date = dateIso.slice(0, 10);
   return { dateIso, date, author: "Unknown <unknown@example.com>", name: "Unknown", email: "" };
 }
 
-function parsePathParts(relPath) {
+function parsePathParts(relPath: string): { dir: string; base: string; name: string; ext: string } {
   const dir = path.posix.dirname(relPath);
   const base = path.posix.basename(relPath);
   const dot = base.lastIndexOf(".");
@@ -141,7 +169,7 @@ function parsePathParts(relPath) {
   return { dir: dir === "." ? "" : dir, base, name, ext };
 }
 
-function uniqueTargetPath(preferredRelPath, occupied) {
+function uniqueTargetPath(preferredRelPath: string, occupied: Set<string>): string {
   if (!occupied.has(preferredRelPath)) return preferredRelPath;
   const { dir, name, ext } = parsePathParts(preferredRelPath);
   for (let i = 2; i < 10_000; i++) {
@@ -151,7 +179,29 @@ function uniqueTargetPath(preferredRelPath, occupied) {
   throw new Error(`Unable to find a unique filename for: ${preferredRelPath}`);
 }
 
-async function listRootFiles(repoRootAbs) {
+async function pathExists(repoRootAbs: string, relPath: string): Promise<boolean> {
+  try {
+    const abs = path.join(repoRootAbs, ...relPath.split("/"));
+    await fs.access(abs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function uniqueTempPath(repoRootAbs: string, fromRelPath: string, occupied: Set<string>): Promise<string> {
+  const { dir, base } = parsePathParts(fromRelPath);
+  for (let i = 1; i < 10_000; i++) {
+    const suffix = i === 1 ? ".simpledoc-tmp" : `.simpledoc-tmp-${i}`;
+    const candidate = path.posix.join(dir, `${base}${suffix}`);
+    if (occupied.has(candidate)) continue;
+    if (await pathExists(repoRootAbs, candidate)) continue;
+    return candidate;
+  }
+  throw new Error(`Unable to allocate a temporary filename for: ${fromRelPath}`);
+}
+
+async function listRootFiles(repoRootAbs: string): Promise<string[]> {
   const entries = await fs.readdir(repoRootAbs, { withFileTypes: true });
   return entries
     .filter((e) => e.isFile())
@@ -159,21 +209,24 @@ async function listRootFiles(repoRootAbs) {
     .filter((name) => !name.startsWith("."));
 }
 
-function toPosixRelPath(p) {
+function toPosixRelPath(p: string): string {
   return p.split(path.sep).join(path.posix.sep);
 }
 
-export function formatActions(actions) {
-  const lines = [];
+export function formatActions(actions: MigrationAction[]): string {
+  const lines: string[] = [];
   for (const action of actions) {
     if (action.type === "rename") lines.push(`- rename: ${action.from} -> ${action.to}`);
     else if (action.type === "frontmatter") lines.push(`- frontmatter: ${action.path}`);
-    else lines.push(`- ${action.type}: ${action.path ?? ""}`.trim());
+    else {
+      const exhaustiveCheck: never = action;
+      throw new Error(`Unknown action: ${String(exhaustiveCheck)}`);
+    }
   }
   return lines.join("\n");
 }
 
-export async function planMigration({ force }) {
+export async function planMigration(): Promise<MigrationPlan> {
   const repoRootAbs = getRepoRoot();
   const repoRoot = toPosixRelPath(repoRootAbs);
 
@@ -202,20 +255,19 @@ export async function planMigration({ force }) {
   const docsMarkdown = existingAll.filter((p) => p.startsWith("docs/") && isMarkdownFile(p));
   const candidates = [...new Set([...rootMarkdown, ...docsMarkdown])];
 
-  const fileMeta = new Map();
+  const fileMeta = new Map<string, FileMeta>();
   for (const filePath of candidates) {
-    let info = null;
+    let info: FileMeta | null = null;
     if (trackedSet.has(filePath)) info = getCreationInfo(repoRootAbs, filePath);
     if (!info) info = await getFileSystemInfo(repoRootAbs, filePath);
     fileMeta.set(filePath, info);
   }
 
-  const desiredTargets = new Map();
+  const desiredTargets = new Map<string, string>();
   for (const filePath of candidates) {
     const base = path.posix.basename(filePath);
-    const baseName = base;
-    const datePrefix = isDatePrefixedBaseName(baseName);
-    const isCap = isCapitalizedDoc(baseName);
+    const datePrefix = isDatePrefixedBaseName(base);
+    const isCap = isCapitalizedDoc(base);
 
     const isRoot = !filePath.includes("/");
     const isInDocs = filePath.startsWith("docs/");
@@ -226,20 +278,19 @@ export async function planMigration({ force }) {
     }
 
     if (isRoot) {
-      // Root lowercase markdowns should live under docs/
       if (datePrefix) {
-        desiredTargets.set(filePath, path.posix.join("docs", baseName));
+        desiredTargets.set(filePath, path.posix.join("docs", base));
         continue;
       }
 
       const meta = fileMeta.get(filePath);
       const date = meta?.date;
       if (!date) {
-        desiredTargets.set(filePath, path.posix.join("docs", slugifyBaseName(baseName)));
+        desiredTargets.set(filePath, path.posix.join("docs", slugifyBaseName(base)));
         continue;
       }
 
-      const slug = slugifyBaseName(baseName);
+      const slug = slugifyBaseName(base);
       desiredTargets.set(filePath, path.posix.join("docs", `${date}-${slug}`));
       continue;
     }
@@ -253,22 +304,19 @@ export async function planMigration({ force }) {
       const meta = fileMeta.get(filePath);
       const date = meta?.date;
       if (!date) {
-        desiredTargets.set(filePath, path.posix.join(path.posix.dirname(filePath), slugifyBaseName(baseName)));
+        desiredTargets.set(filePath, path.posix.join(path.posix.dirname(filePath), slugifyBaseName(base)));
         continue;
       }
 
-      const slug = slugifyBaseName(baseName);
-      desiredTargets.set(
-        filePath,
-        path.posix.join(path.posix.dirname(filePath), `${date}-${slug}`),
-      );
+      const slug = slugifyBaseName(base);
+      desiredTargets.set(filePath, path.posix.join(path.posix.dirname(filePath), `${date}-${slug}`));
       continue;
     }
 
     desiredTargets.set(filePath, filePath);
   }
 
-  const renames = [];
+  const renames: Array<{ from: string; to: string }> = [];
   for (const [from, to] of desiredTargets.entries()) {
     if (from !== to) renames.push({ from, to });
   }
@@ -276,8 +324,8 @@ export async function planMigration({ force }) {
   const sourcesToRename = new Set(renames.map((r) => r.from));
   const occupied = new Set([...existingAllSet].filter((p) => !sourcesToRename.has(p)));
 
-  const finalRenames = [];
-  const renameMap = new Map();
+  const finalRenames: RenameAction[] = [];
+  const renameMap = new Map<string, string>();
   for (const { from, to } of renames) {
     const uniqueTo = uniqueTargetPath(to, occupied);
     occupied.add(uniqueTo);
@@ -285,7 +333,7 @@ export async function planMigration({ force }) {
     renameMap.set(from, uniqueTo);
   }
 
-  const frontmatterAdds = [];
+  const frontmatterAdds: FrontmatterAction[] = [];
   for (const filePath of candidates) {
     const base = path.posix.basename(filePath);
     const targetPath = renameMap.get(filePath) ?? filePath;
@@ -295,12 +343,11 @@ export async function planMigration({ force }) {
     if (!datePrefix) continue;
     if (isCapitalizedDoc(base)) continue;
 
-    const abs = path.join(repoRootAbs, ...targetPath.split("/"));
-    let content;
+    const absTarget = path.join(repoRootAbs, ...targetPath.split("/"));
+    let content: string;
     try {
-      content = await fs.readFile(abs, "utf8");
+      content = await fs.readFile(absTarget, "utf8");
     } catch {
-      // File may be moved/renamed; read original if target doesn't exist yet.
       const absOld = path.join(repoRootAbs, ...filePath.split("/"));
       content = await fs.readFile(absOld, "utf8");
     }
@@ -314,7 +361,7 @@ export async function planMigration({ force }) {
     frontmatterAdds.push({ type: "frontmatter", path: targetPath, title, author, date });
   }
 
-  const actions = [...finalRenames, ...frontmatterAdds];
+  const actions: MigrationAction[] = [...finalRenames, ...frontmatterAdds];
 
   return {
     repoRootAbs,
@@ -325,23 +372,23 @@ export async function planMigration({ force }) {
   };
 }
 
-async function ensureParentDir(repoRootAbs, relPath) {
+async function ensureParentDir(repoRootAbs: string, relPath: string): Promise<void> {
   const dir = path.dirname(path.join(repoRootAbs, ...relPath.split("/")));
   await fs.mkdir(dir, { recursive: true });
 }
 
-function gitMv(repoRootAbs, from, to) {
+function gitMv(repoRootAbs: string, from: string, to: string): void {
   runGit(["mv", "--", from, to], { cwd: repoRootAbs });
 }
 
-async function fsMv(repoRootAbs, from, to) {
+async function fsMv(repoRootAbs: string, from: string, to: string): Promise<void> {
   await ensureParentDir(repoRootAbs, to);
   const absFrom = path.join(repoRootAbs, ...from.split("/"));
   const absTo = path.join(repoRootAbs, ...to.split("/"));
   await fs.rename(absFrom, absTo);
 }
 
-async function writeFrontmatter(repoRootAbs, relPath, frontmatter) {
+async function writeFrontmatter(repoRootAbs: string, relPath: string, frontmatter: string): Promise<void> {
   const abs = path.join(repoRootAbs, ...relPath.split("/"));
   const content = await fs.readFile(abs, "utf8");
   if (hasFrontmatter(content)) return;
@@ -350,16 +397,49 @@ async function writeFrontmatter(repoRootAbs, relPath, frontmatter) {
   await fs.writeFile(abs, `${frontmatter}${separator}${cleaned}`, "utf8");
 }
 
-export async function runMigrationPlan(plan) {
-  for (const action of plan.actions) {
-    if (action.type !== "rename") continue;
-    await ensureParentDir(plan.repoRootAbs, action.to);
-    if (plan.trackedSet.has(action.from)) gitMv(plan.repoRootAbs, action.from, action.to);
-    else await fsMv(plan.repoRootAbs, action.from, action.to);
+async function applyRenames(plan: MigrationPlan, renames: RenameAction[]): Promise<void> {
+  const fromSet = new Set(renames.map((r) => r.from));
+  const needsTwoPhase = renames.some((r) => fromSet.has(r.to));
+
+  const move = async (from: string, to: string, tracked: boolean): Promise<void> => {
+    await ensureParentDir(plan.repoRootAbs, to);
+    if (tracked) gitMv(plan.repoRootAbs, from, to);
+    else await fsMv(plan.repoRootAbs, from, to);
+  };
+
+  if (!needsTwoPhase) {
+    for (const r of renames) await move(r.from, r.to, plan.trackedSet.has(r.from));
+    return;
   }
 
-  for (const action of plan.actions) {
-    if (action.type !== "frontmatter") continue;
+  const occupied = new Set<string>([...fromSet, ...renames.map((r) => r.to)]);
+  const tempByFrom = new Map<string, string>();
+  for (const r of renames) {
+    const tmp = await uniqueTempPath(plan.repoRootAbs, r.from, occupied);
+    occupied.add(tmp);
+    tempByFrom.set(r.from, tmp);
+  }
+
+  for (const r of renames) {
+    const tmp = tempByFrom.get(r.from);
+    if (!tmp) throw new Error(`Internal error: missing temp name for ${r.from}`);
+    await move(r.from, tmp, plan.trackedSet.has(r.from));
+  }
+
+  for (const r of renames) {
+    const tmp = tempByFrom.get(r.from);
+    if (!tmp) throw new Error(`Internal error: missing temp name for ${r.from}`);
+    await move(tmp, r.to, plan.trackedSet.has(r.from));
+  }
+}
+
+export async function runMigrationPlan(plan: MigrationPlan): Promise<void> {
+  const renames = plan.actions.filter((a): a is RenameAction => a.type === "rename");
+  const frontmatters = plan.actions.filter((a): a is FrontmatterAction => a.type === "frontmatter");
+
+  if (renames.length > 0) await applyRenames(plan, renames);
+
+  for (const action of frontmatters) {
     const frontmatter = buildFrontmatter({
       title: action.title,
       author: action.author,

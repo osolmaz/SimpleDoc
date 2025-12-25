@@ -2,7 +2,17 @@ import { createInterface } from "node:readline/promises";
 import process from "node:process";
 import { formatActions, planMigration, runMigrationPlan } from "./migrator.js";
 
-function printHelp() {
+type CliCommand = "migrate";
+
+type CliArgs = {
+  command: CliCommand;
+  dryRun: boolean;
+  yes: boolean;
+  force: boolean;
+  help: boolean;
+};
+
+function printHelp(): void {
   process.stdout.write(
     [
       "SimpleDoc CLI",
@@ -24,23 +34,25 @@ function printHelp() {
   );
 }
 
-function parseArgs(argv) {
-  const positional = [];
-  const flags = [];
+function parseArgs(argv: string[]): CliArgs {
+  const positional: string[] = [];
+  const flags: string[] = [];
   for (const arg of argv.slice(2)) {
     if (arg.startsWith("-")) flags.push(arg);
     else positional.push(arg);
   }
 
-  const command = positional[0] ?? "migrate";
+  const command = (positional[0] ?? "migrate") as string;
 
-  const args = {
-    command,
+  const args: CliArgs = {
+    command: "migrate",
     dryRun: false,
     yes: false,
     force: false,
     help: false,
   };
+
+  if (command !== "migrate") throw new Error(`Unknown command: ${command}`);
 
   for (const arg of flags) {
     if (arg === "--dry-run") args.dryRun = true;
@@ -53,25 +65,30 @@ function parseArgs(argv) {
   return args;
 }
 
-async function confirm(rl, question, defaultYes) {
+async function confirm(rl: ReturnType<typeof createInterface>, question: string, defaultYes: boolean) {
   const suffix = defaultYes ? "[Y/n]" : "[y/N]";
   const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase();
   if (!answer) return defaultYes;
   return answer === "y" || answer === "yes";
 }
 
-function limitLines(text, maxLines) {
+function limitLines(text: string, maxLines: number): string {
   const lines = text.split("\n");
   if (lines.length <= maxLines) return text;
   return `${lines.slice(0, maxLines).join("\n")}\n- …and ${lines.length - maxLines} more`;
 }
 
-export async function runCli(argv) {
-  let args;
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+export async function runCli(argv: string[]): Promise<void> {
+  let args: CliArgs;
   try {
     args = parseArgs(argv);
   } catch (err) {
-    process.stderr.write(`${err.message}\n\n`);
+    process.stderr.write(`${getErrorMessage(err)}\n\n`);
     printHelp();
     process.exitCode = 2;
     return;
@@ -91,9 +108,9 @@ export async function runCli(argv) {
 
   let plan;
   try {
-    plan = await planMigration({ force: args.force });
+    plan = await planMigration();
   } catch (err) {
-    process.stderr.write(`${err.message}\n`);
+    process.stderr.write(`${getErrorMessage(err)}\n`);
     process.exitCode = 1;
     return;
   }
@@ -119,7 +136,7 @@ export async function runCli(argv) {
 
   process.stdout.write("Planned changes:\n");
   if (rootMoves.length > 0) {
-    process.stdout.write(`\nStep 1: Move root lowercase markdown files to docs/ (${rootMoves.length})\n`);
+    process.stdout.write(`\nStep 1: Move root markdown files to docs/ (${rootMoves.length})\n`);
     process.stdout.write(`${limitLines(formatActions(rootMoves), 30)}\n`);
   }
   if (docsRenames.length > 0) {
@@ -192,9 +209,10 @@ export async function runCli(argv) {
   try {
     await runMigrationPlan(plan);
   } catch (err) {
-    process.stderr.write(`${err.message}\n`);
+    process.stderr.write(`${getErrorMessage(err)}\n`);
     process.exitCode = 1;
     return;
   }
   process.stdout.write("Done. Review with `git status` / `git diff` and commit when ready.\n");
 }
+

@@ -21,21 +21,27 @@
   ],
   "type": "module",
   "bin": {
-    "simpledoc": "bin/simpledoc.js"
+    "simpledoc": "dist/bin/simpledoc.js"
   },
   "scripts": {
-    "migrate": "node ./bin/simpledoc.js migrate",
-    "migrate:dry": "node ./bin/simpledoc.js migrate --dry-run"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "migrate": "npm run -s build && node ./dist/bin/simpledoc.js migrate",
+    "migrate:dry": "npm run -s build && node ./dist/bin/simpledoc.js migrate --dry-run"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "bin",
-    "src",
+    "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs"
   ],
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "typescript": "^5.6.0"
+  },
   "publishConfig": {
     "access": "public"
   }

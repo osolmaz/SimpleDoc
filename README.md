@@ -67,8 +67,8 @@ npx -y @simpledoc/simpledoc migrate --dry-run   # preview
 npx -y @simpledoc/simpledoc migrate             # interactive wizard
 
 # or, from this repo:
-pnpm migrate:dry                                 # preview
-pnpm migrate                                     # interactive wizard
+npm run migrate:dry                               # preview
+npm run migrate                                   # interactive wizard
 ```
 
 ## Inspiration

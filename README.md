@@ -1,5 +1,6 @@
 # SimpleDoc
-> Lightweight standard for organizing Markdown documentation in codebases 
+
+> Lightweight standard for organizing Markdown documentation in codebases
 
 SimpleDoc defines a small set of rules for the naming and placement of Markdown files in a codebase, agnostic of any documentation framework:
 
@@ -19,13 +20,13 @@ SimpleDoc defines two types of files:
 - MUST NOT use capital letters in filename for Latin, Greek, Cyrillic and other writing systems that have lowercase/uppercase distinction.
 - MAY use non-ASCII characters, e.g. `docs/2025-12-22-postmortem-login-ausfälle.md`, `docs/2025-12-22-功能-设计说明.md`.
 - Date-prefixed files SHOULD contain YAML frontmatter with at least `title`, `author` and `date` fields, but we are all people and sometimes don't have time to write a proper frontmatter, so it is not required. E.g.
-    ```yaml
-    ---
-    title: Implementation Plan
-    author: John Doe <john.doe@example.com>
-    date: 2025-12-22
-    ---
-    ```
+  ```yaml
+  ---
+  title: Implementation Plan
+  author: John Doe <john.doe@example.com>
+  date: 2025-12-22
+  ---
+  ```
 - If present in YAML frontmatter, author SHOULD be of `Name <email>` per the RFC 5322 name-addr mailbox format and date SHOULD be ISO 8601 `YYYY-MM-DD` format.
 
 ### 2. Capitalized files

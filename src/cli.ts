@@ -21,8 +21,8 @@ function printHelp(): void {
       "SimpleDoc CLI",
       "",
       "Usage:",
-      "  simpledoc migrate [--dry-run] [--yes] [--force] [--author \"Name <email>\"]",
-      "  simpledoc [--dry-run] [--yes] [--force] [--author \"Name <email>\"]   # defaults to `migrate`",
+      '  simpledoc migrate [--dry-run] [--yes] [--force] [--author "Name <email>"]',
+      '  simpledoc [--dry-run] [--yes] [--force] [--author "Name <email>"]   # defaults to `migrate`',
       "",
       "Commands:",
       "  migrate   One-step wizard to migrate a repo's docs to SimpleDoc conventions",
@@ -98,9 +98,15 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-async function confirm(rl: ReturnType<typeof createInterface>, question: string, defaultYes: boolean) {
+async function confirm(
+  rl: ReturnType<typeof createInterface>,
+  question: string,
+  defaultYes: boolean,
+) {
   const suffix = defaultYes ? "[Y/n]" : "[y/N]";
-  const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase();
+  const answer = (await rl.question(`${question} ${suffix} `))
+    .trim()
+    .toLowerCase();
   if (!answer) return defaultYes;
   return answer === "y" || answer === "yes";
 }
@@ -116,17 +122,29 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
-function getAuthorStats(actions: FrontmatterAction[]): Array<[author: string, count: number]> {
+function getAuthorStats(
+  actions: FrontmatterAction[],
+): Array<[author: string, count: number]> {
   const counts = new Map<string, number>();
-  for (const action of actions) counts.set(action.author, (counts.get(action.author) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => (b[1] - a[1] ? b[1] - a[1] : a[0].localeCompare(b[0])));
+  for (const action of actions)
+    counts.set(action.author, (counts.get(action.author) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) =>
+    b[1] - a[1] ? b[1] - a[1] : a[0].localeCompare(b[0]),
+  );
 }
 
-function summarizeAuthors(authorStats: Array<[author: string, count: number]>, maxAuthors: number): string {
+function summarizeAuthors(
+  authorStats: Array<[author: string, count: number]>,
+  maxAuthors: number,
+): string {
   const lines: string[] = authorStats
     .slice(0, maxAuthors)
-    .map(([author, count]) => `- ${author} (${count} file${count === 1 ? "" : "s"})`);
-  if (authorStats.length > maxAuthors) lines.push(`- …and ${authorStats.length - maxAuthors} more`);
+    .map(
+      ([author, count]) =>
+        `- ${author} (${count} file${count === 1 ? "" : "s"})`,
+    );
+  if (authorStats.length > maxAuthors)
+    lines.push(`- …and ${authorStats.length - maxAuthors} more`);
   return lines.join("\n");
 }
 
@@ -169,17 +187,27 @@ export async function runCli(argv: string[]): Promise<void> {
 
   if (plan.dirty && !args.force) {
     if (args.dryRun) {
-      process.stderr.write("Warning: working tree is dirty (use --force to apply).\n\n");
+      process.stderr.write(
+        "Warning: working tree is dirty (use --force to apply).\n\n",
+      );
     } else if (args.yes) {
-      process.stderr.write("Refusing to apply changes on a dirty working tree without --force.\n");
+      process.stderr.write(
+        "Refusing to apply changes on a dirty working tree without --force.\n",
+      );
       process.exitCode = 2;
       return;
     }
   }
 
-  const rootMoves = plan.actions.filter((a) => a.type === "rename" && !a.from.includes("/"));
-  const docsRenames = plan.actions.filter((a) => a.type === "rename" && a.from.startsWith("docs/"));
-  const frontmatterAdds = plan.actions.filter((a): a is FrontmatterAction => a.type === "frontmatter");
+  const rootMoves = plan.actions.filter(
+    (a) => a.type === "rename" && !a.from.includes("/"),
+  );
+  const docsRenames = plan.actions.filter(
+    (a) => a.type === "rename" && a.from.startsWith("docs/"),
+  );
+  const frontmatterAdds = plan.actions.filter(
+    (a): a is FrontmatterAction => a.type === "frontmatter",
+  );
 
   const steps = [
     {
@@ -190,13 +218,16 @@ export async function runCli(argv: string[]): Promise<void> {
     },
     {
       id: "docs-date-prefix",
-      title: "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
-      confirmLabel: "date-prefix `docs/` Markdown filenames using first commit date",
+      title:
+        "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
+      confirmLabel:
+        "date-prefix `docs/` Markdown filenames using first commit date",
       actions: docsRenames,
     },
     {
       id: "frontmatter",
-      title: "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
+      title:
+        "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
       confirmLabel: "add YAML frontmatter (title/author/date)",
       actions: frontmatterAdds,
     },
@@ -205,7 +236,9 @@ export async function runCli(argv: string[]): Promise<void> {
   process.stdout.write("Planned changes:\n");
   for (const [idx, step] of steps.entries()) {
     const stepNo = idx + 1;
-    process.stdout.write(`\nStep ${stepNo}: ${step.title} (${step.actions.length})\n`);
+    process.stdout.write(
+      `\nStep ${stepNo}: ${step.title} (${step.actions.length})\n`,
+    );
     process.stdout.write(`${limitLines(formatActions(step.actions), 30)}\n`);
   }
 
@@ -213,17 +246,26 @@ export async function runCli(argv: string[]): Promise<void> {
 
   const interactive = process.stdin.isTTY && process.stdout.isTTY && !args.yes;
   if (!interactive && !args.yes) {
-    process.stderr.write("Refusing to apply changes without a TTY. Re-run with --yes.\n");
+    process.stderr.write(
+      "Refusing to apply changes without a TTY. Re-run with --yes.\n",
+    );
     process.exitCode = 2;
     return;
   }
 
   let proceed = true;
   if (interactive) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     try {
       if (plan.dirty && !args.force) {
-        const contDirty = await confirm(rl, "Working tree is dirty. Continue anyway?", false);
+        const contDirty = await confirm(
+          rl,
+          "Working tree is dirty. Continue anyway?",
+          false,
+        );
         if (!contDirty) {
           process.stdout.write("Aborted.\n");
           process.exitCode = 1;
@@ -233,7 +275,9 @@ export async function runCli(argv: string[]): Promise<void> {
 
       if (frontmatterAdds.length > 0 && !args.authorOverride) {
         const authorStats = getAuthorStats(frontmatterAdds);
-        process.stdout.write("\nDetected authors for inserted frontmatter (from git history):\n");
+        process.stdout.write(
+          "\nDetected authors for inserted frontmatter (from git history):\n",
+        );
         process.stdout.write(`${summarizeAuthors(authorStats, 10)}\n\n`);
 
         const useGit = await confirm(
@@ -248,7 +292,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
           const rewrites: Record<string, string> = {};
           for (const [author, count] of authorStats) {
-            const answer = (await rl.question(`Replacement for ${author} (${count} files) [${author}]: `)).trim();
+            const answer = (
+              await rl.question(
+                `Replacement for ${author} (${count} files) [${author}]: `,
+              )
+            ).trim();
             const replacement = answer || author;
             rewrites[author] = replacement;
           }
@@ -258,7 +306,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
       for (const [idx, step] of steps.entries()) {
         const stepNo = idx + 1;
-        const ok = await confirm(rl, `Proceed with step ${stepNo} (${step.confirmLabel})?`, true);
+        const ok = await confirm(
+          rl,
+          `Proceed with step ${stepNo} (${step.confirmLabel})?`,
+          true,
+        );
         if (!ok) {
           process.stdout.write("Aborted.\n");
           process.exitCode = 1;
@@ -288,5 +340,7 @@ export async function runCli(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  process.stdout.write("Done. Review with `git status` / `git diff` and commit when ready.\n");
+  process.stdout.write(
+    "Done. Review with `git status` / `git diff` and commit when ready.\n",
+  );
 }

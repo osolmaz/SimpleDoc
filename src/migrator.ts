@@ -38,7 +38,9 @@ function runGit(args: string[], { cwd }: { cwd: string }): string {
   if (res.error) throw res.error;
   if (res.status !== 0) {
     const msg = (res.stderr || res.stdout || "").trim();
-    throw new Error(msg || `git ${args.join(" ")} failed with code ${res.status}`);
+    throw new Error(
+      msg || `git ${args.join(" ")} failed with code ${res.status}`,
+    );
   }
   return res.stdout;
 }
@@ -50,7 +52,8 @@ function getRepoRoot(): string {
   });
 
   if (res.error) throw res.error;
-  if (res.status !== 0) throw new Error("Not a git repository (or git is not available).");
+  if (res.status !== 0)
+    throw new Error("Not a git repository (or git is not available).");
   return res.stdout.trim();
 }
 
@@ -129,7 +132,15 @@ function yamlQuote(value: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function buildFrontmatter({ title, author, date }: { title: string; author: string; date: string }): string {
+function buildFrontmatter({
+  title,
+  author,
+  date,
+}: {
+  title: string;
+  author: string;
+  date: string;
+}): string {
   return [
     "---",
     `title: ${yamlQuote(title)}`,
@@ -140,7 +151,10 @@ function buildFrontmatter({ title, author, date }: { title: string; author: stri
 }
 
 function getCreationInfo(cwd: string, filePath: string): FileMeta | null {
-  const out = runGit(["log", "--follow", "--format=%aI\t%aN\t%aE", "--", filePath], { cwd });
+  const out = runGit(
+    ["log", "--follow", "--format=%aI\t%aN\t%aE", "--", filePath],
+    { cwd },
+  );
   const lines = out.trim().split("\n").filter(Boolean);
   if (lines.length === 0) return null;
   const [dateIso, name, email] = lines[lines.length - 1]!.split("\t");
@@ -149,7 +163,10 @@ function getCreationInfo(cwd: string, filePath: string): FileMeta | null {
   return { dateIso: dateIso!, date, author, name: name!, email: email ?? "" };
 }
 
-async function getFileSystemInfo(repoRootAbs: string, filePath: string): Promise<FileMeta> {
+async function getFileSystemInfo(
+  repoRootAbs: string,
+  filePath: string,
+): Promise<FileMeta> {
   const abs = path.join(repoRootAbs, ...filePath.split("/"));
   const stat = await fs.stat(abs);
   const dateIso =
@@ -157,10 +174,21 @@ async function getFileSystemInfo(repoRootAbs: string, filePath: string): Promise
       ? stat.birthtime.toISOString()
       : stat.mtime.toISOString();
   const date = dateIso.slice(0, 10);
-  return { dateIso, date, author: "Unknown <unknown@example.com>", name: "Unknown", email: "" };
+  return {
+    dateIso,
+    date,
+    author: "Unknown <unknown@example.com>",
+    name: "Unknown",
+    email: "",
+  };
 }
 
-function parsePathParts(relPath: string): { dir: string; base: string; name: string; ext: string } {
+function parsePathParts(relPath: string): {
+  dir: string;
+  base: string;
+  name: string;
+  ext: string;
+} {
   const dir = path.posix.dirname(relPath);
   const base = path.posix.basename(relPath);
   const dot = base.lastIndexOf(".");
@@ -169,7 +197,10 @@ function parsePathParts(relPath: string): { dir: string; base: string; name: str
   return { dir: dir === "." ? "" : dir, base, name, ext };
 }
 
-function uniqueTargetPath(preferredRelPath: string, occupied: Set<string>): string {
+function uniqueTargetPath(
+  preferredRelPath: string,
+  occupied: Set<string>,
+): string {
   if (!occupied.has(preferredRelPath)) return preferredRelPath;
   const { dir, name, ext } = parsePathParts(preferredRelPath);
   for (let i = 2; i < 10_000; i++) {
@@ -179,7 +210,10 @@ function uniqueTargetPath(preferredRelPath: string, occupied: Set<string>): stri
   throw new Error(`Unable to find a unique filename for: ${preferredRelPath}`);
 }
 
-async function pathExists(repoRootAbs: string, relPath: string): Promise<boolean> {
+async function pathExists(
+  repoRootAbs: string,
+  relPath: string,
+): Promise<boolean> {
   try {
     const abs = path.join(repoRootAbs, ...relPath.split("/"));
     await fs.access(abs);
@@ -189,7 +223,11 @@ async function pathExists(repoRootAbs: string, relPath: string): Promise<boolean
   }
 }
 
-async function uniqueTempPath(repoRootAbs: string, fromRelPath: string, occupied: Set<string>): Promise<string> {
+async function uniqueTempPath(
+  repoRootAbs: string,
+  fromRelPath: string,
+  occupied: Set<string>,
+): Promise<string> {
   const { dir, base } = parsePathParts(fromRelPath);
   for (let i = 1; i < 10_000; i++) {
     const suffix = i === 1 ? ".simpledoc-tmp" : `.simpledoc-tmp-${i}`;
@@ -198,7 +236,9 @@ async function uniqueTempPath(repoRootAbs: string, fromRelPath: string, occupied
     if (await pathExists(repoRootAbs, candidate)) continue;
     return candidate;
   }
-  throw new Error(`Unable to allocate a temporary filename for: ${fromRelPath}`);
+  throw new Error(
+    `Unable to allocate a temporary filename for: ${fromRelPath}`,
+  );
 }
 
 async function listRootFiles(repoRootAbs: string): Promise<string[]> {
@@ -216,8 +256,10 @@ function toPosixRelPath(p: string): string {
 export function formatActions(actions: MigrationAction[]): string {
   const lines: string[] = [];
   for (const action of actions) {
-    if (action.type === "rename") lines.push(`- rename: ${action.from} -> ${action.to}`);
-    else if (action.type === "frontmatter") lines.push(`- frontmatter: ${action.path}`);
+    if (action.type === "rename")
+      lines.push(`- rename: ${action.from} -> ${action.to}`);
+    else if (action.type === "frontmatter")
+      lines.push(`- frontmatter: ${action.path}`);
     else {
       const exhaustiveCheck: never = action;
       throw new Error(`Unknown action: ${String(exhaustiveCheck)}`);
@@ -244,15 +286,20 @@ export async function planMigration(): Promise<MigrationPlan> {
     return Boolean(isDatePrefixedBaseName(f)) || isLowercaseDocBaseName(f);
   });
 
-  const existingAll = runGit(["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
-    cwd: repoRootAbs,
-  })
+  const existingAll = runGit(
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    {
+      cwd: repoRootAbs,
+    },
+  )
     .split("\0")
     .filter(Boolean)
     .map((p) => p.trim());
   const existingAllSet = new Set(existingAll);
 
-  const docsMarkdown = existingAll.filter((p) => p.startsWith("docs/") && isMarkdownFile(p));
+  const docsMarkdown = existingAll.filter(
+    (p) => p.startsWith("docs/") && isMarkdownFile(p),
+  );
   const candidates = [...new Set([...rootMarkdown, ...docsMarkdown])];
 
   const fileMeta = new Map<string, FileMeta>();
@@ -286,7 +333,10 @@ export async function planMigration(): Promise<MigrationPlan> {
       const meta = fileMeta.get(filePath);
       const date = meta?.date;
       if (!date) {
-        desiredTargets.set(filePath, path.posix.join("docs", slugifyBaseName(base)));
+        desiredTargets.set(
+          filePath,
+          path.posix.join("docs", slugifyBaseName(base)),
+        );
         continue;
       }
 
@@ -304,12 +354,18 @@ export async function planMigration(): Promise<MigrationPlan> {
       const meta = fileMeta.get(filePath);
       const date = meta?.date;
       if (!date) {
-        desiredTargets.set(filePath, path.posix.join(path.posix.dirname(filePath), slugifyBaseName(base)));
+        desiredTargets.set(
+          filePath,
+          path.posix.join(path.posix.dirname(filePath), slugifyBaseName(base)),
+        );
         continue;
       }
 
       const slug = slugifyBaseName(base);
-      desiredTargets.set(filePath, path.posix.join(path.posix.dirname(filePath), `${date}-${slug}`));
+      desiredTargets.set(
+        filePath,
+        path.posix.join(path.posix.dirname(filePath), `${date}-${slug}`),
+      );
       continue;
     }
 
@@ -322,7 +378,9 @@ export async function planMigration(): Promise<MigrationPlan> {
   }
 
   const sourcesToRename = new Set(renames.map((r) => r.from));
-  const occupied = new Set([...existingAllSet].filter((p) => !sourcesToRename.has(p)));
+  const occupied = new Set(
+    [...existingAllSet].filter((p) => !sourcesToRename.has(p)),
+  );
 
   const finalRenames: RenameAction[] = [];
   const renameMap = new Map<string, string>();
@@ -358,7 +416,13 @@ export async function planMigration(): Promise<MigrationPlan> {
     const author = meta?.author ?? "Unknown <unknown@example.com>";
     const date = datePrefix;
     const title = titleFromMarkdown(content) ?? titleFromSlug(targetBase);
-    frontmatterAdds.push({ type: "frontmatter", path: targetPath, title, author, date });
+    frontmatterAdds.push({
+      type: "frontmatter",
+      path: targetPath,
+      title,
+      author,
+      date,
+    });
   }
 
   const actions: MigrationAction[] = [...finalRenames, ...frontmatterAdds];
@@ -372,7 +436,10 @@ export async function planMigration(): Promise<MigrationPlan> {
   };
 }
 
-async function ensureParentDir(repoRootAbs: string, relPath: string): Promise<void> {
+async function ensureParentDir(
+  repoRootAbs: string,
+  relPath: string,
+): Promise<void> {
   const dir = path.dirname(path.join(repoRootAbs, ...relPath.split("/")));
   await fs.mkdir(dir, { recursive: true });
 }
@@ -381,14 +448,22 @@ function gitMv(repoRootAbs: string, from: string, to: string): void {
   runGit(["mv", "--", from, to], { cwd: repoRootAbs });
 }
 
-async function fsMv(repoRootAbs: string, from: string, to: string): Promise<void> {
+async function fsMv(
+  repoRootAbs: string,
+  from: string,
+  to: string,
+): Promise<void> {
   await ensureParentDir(repoRootAbs, to);
   const absFrom = path.join(repoRootAbs, ...from.split("/"));
   const absTo = path.join(repoRootAbs, ...to.split("/"));
   await fs.rename(absFrom, absTo);
 }
 
-async function writeFrontmatter(repoRootAbs: string, relPath: string, frontmatter: string): Promise<void> {
+async function writeFrontmatter(
+  repoRootAbs: string,
+  relPath: string,
+  frontmatter: string,
+): Promise<void> {
   const abs = path.join(repoRootAbs, ...relPath.split("/"));
   const content = await fs.readFile(abs, "utf8");
   if (hasFrontmatter(content)) return;
@@ -397,18 +472,26 @@ async function writeFrontmatter(repoRootAbs: string, relPath: string, frontmatte
   await fs.writeFile(abs, `${frontmatter}${separator}${cleaned}`, "utf8");
 }
 
-async function applyRenames(plan: MigrationPlan, renames: RenameAction[]): Promise<void> {
+async function applyRenames(
+  plan: MigrationPlan,
+  renames: RenameAction[],
+): Promise<void> {
   const fromSet = new Set(renames.map((r) => r.from));
   const needsTwoPhase = renames.some((r) => fromSet.has(r.to));
 
-  const move = async (from: string, to: string, tracked: boolean): Promise<void> => {
+  const move = async (
+    from: string,
+    to: string,
+    tracked: boolean,
+  ): Promise<void> => {
     await ensureParentDir(plan.repoRootAbs, to);
     if (tracked) gitMv(plan.repoRootAbs, from, to);
     else await fsMv(plan.repoRootAbs, from, to);
   };
 
   if (!needsTwoPhase) {
-    for (const r of renames) await move(r.from, r.to, plan.trackedSet.has(r.from));
+    for (const r of renames)
+      await move(r.from, r.to, plan.trackedSet.has(r.from));
     return;
   }
 
@@ -422,29 +505,40 @@ async function applyRenames(plan: MigrationPlan, renames: RenameAction[]): Promi
 
   for (const r of renames) {
     const tmp = tempByFrom.get(r.from);
-    if (!tmp) throw new Error(`Internal error: missing temp name for ${r.from}`);
+    if (!tmp)
+      throw new Error(`Internal error: missing temp name for ${r.from}`);
     await move(r.from, tmp, plan.trackedSet.has(r.from));
   }
 
   for (const r of renames) {
     const tmp = tempByFrom.get(r.from);
-    if (!tmp) throw new Error(`Internal error: missing temp name for ${r.from}`);
+    if (!tmp)
+      throw new Error(`Internal error: missing temp name for ${r.from}`);
     await move(tmp, r.to, plan.trackedSet.has(r.from));
   }
 }
 
 export async function runMigrationPlan(
   plan: MigrationPlan,
-  options?: { authorOverride?: string | null; authorRewrites?: Record<string, string> | null },
+  options?: {
+    authorOverride?: string | null;
+    authorRewrites?: Record<string, string> | null;
+  },
 ): Promise<void> {
-  const renames = plan.actions.filter((a): a is RenameAction => a.type === "rename");
-  const frontmatters = plan.actions.filter((a): a is FrontmatterAction => a.type === "frontmatter");
+  const renames = plan.actions.filter(
+    (a): a is RenameAction => a.type === "rename",
+  );
+  const frontmatters = plan.actions.filter(
+    (a): a is FrontmatterAction => a.type === "frontmatter",
+  );
 
   if (renames.length > 0) await applyRenames(plan, renames);
 
   for (const action of frontmatters) {
     const author =
-      options?.authorOverride ?? options?.authorRewrites?.[action.author] ?? action.author;
+      options?.authorOverride ??
+      options?.authorRewrites?.[action.author] ??
+      action.author;
     const frontmatter = buildFrontmatter({
       title: action.title,
       author,

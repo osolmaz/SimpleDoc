@@ -196,6 +196,9 @@ function shouldDefaultToMigrate(argvRest: string[]): boolean {
 
 async function runMigrate(options: MigrateOptions): Promise<void> {
   try {
+    process.stderr.write(
+      "Planning changes (this may take a while on large repos)...\n",
+    );
     const planAll = await planMigration();
     const installStatus = await getInstallationStatus(planAll.repoRootAbs);
 
@@ -330,6 +333,9 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (options.yes) {
       printPreviews(defaultPreviews);
+      process.stderr.write(
+        "Applying changes (this may take a while on large repos)...\n",
+      );
       await runMigrationPlan(planAll, {
         authorOverride: options.author ?? null,
         authorRewrites: null,
@@ -393,11 +399,21 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         : false;
     if (includeDocsRenames === null) return abort("Operation cancelled.");
 
-    const planWithFrontmatter = await planMigration({
-      moveRootMarkdownToDocs: Boolean(includeRootMoves),
-      renameDocsToDatePrefix: Boolean(includeDocsRenames),
-      addFrontmatter: true,
-    });
+    const needsReplan =
+      (rootMovesAll.length > 0 && !includeRootMoves) ||
+      (docsRenamesAll.length > 0 && !includeDocsRenames);
+
+    let planWithFrontmatter = planAll;
+    if (needsReplan) {
+      process.stderr.write(
+        "Recomputing plan (this may take a while on large repos)...\n",
+      );
+      planWithFrontmatter = await planMigration({
+        moveRootMarkdownToDocs: Boolean(includeRootMoves),
+        renameDocsToDatePrefix: Boolean(includeDocsRenames),
+        addFrontmatter: true,
+      });
+    }
     const frontmatterAdds = planWithFrontmatter.actions.filter(
       (a): a is FrontmatterAction => a.type === "frontmatter",
     );
@@ -615,7 +631,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     if (!apply) return abort();
 
     const s = spinner();
-    s.start("Applying changes...");
+    s.start("Applying changes (this may take a while on large repos)...");
     await runMigrationPlan(
       { ...planWithFrontmatter, actions: selectedMigrationActions },
       {

@@ -25,7 +25,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "lint": "eslint . --max-warnings 0",
     "prepack": "npm run build",
+    "prepare": "husky",
     "migrate": "npm run -s build && node ./dist/bin/simpledoc.js migrate",
     "migrate:dry": "npm run -s build && node ./dist/bin/simpledoc.js migrate --dry-run"
   },
@@ -40,7 +44,22 @@
   ],
   "devDependencies": {
     "@types/node": "^18.19.0",
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "typescript-eslint": "^8.0.0",
     "typescript": "^5.6.0"
+  },
+  "lint-staged": {
+    "*.{js,ts}": [
+      "prettier --write --ignore-unknown",
+      "eslint --fix"
+    ],
+    "*.{json,md}": [
+      "prettier --write --ignore-unknown"
+    ]
   },
   "publishConfig": {
     "access": "public"

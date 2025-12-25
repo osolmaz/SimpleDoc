@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
-import { spawnSync } from "node:child_process";
 import process from "node:process";
 import { formatActions, planMigration, runMigrationPlan } from "./migrator.js";
+import type { FrontmatterAction } from "./migrator.js";
 
 type CliCommand = "migrate";
 
@@ -12,6 +12,7 @@ type CliArgs = {
   force: boolean;
   help: boolean;
   authorOverride: string | null;
+  authorRewrites: Record<string, string> | null;
 };
 
 function printHelp(): void {
@@ -24,7 +25,7 @@ function printHelp(): void {
       "  simpledoc [--dry-run] [--yes] [--force] [--author \"Name <email>\"]   # defaults to `migrate`",
       "",
       "Commands:",
-      "  migrate     One-step wizard to migrate a repo to SimpleDoc conventions",
+      "  migrate   One-step wizard to migrate a repo's docs to SimpleDoc conventions",
       "",
       "Migrate options:",
       "  --dry-run   Print planned changes and exit",
@@ -45,6 +46,7 @@ function parseArgs(argv: string[]): CliArgs {
     force: false,
     help: false,
     authorOverride: null,
+    authorRewrites: null,
   };
 
   const rest = argv.slice(2);
@@ -114,21 +116,18 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
-function getGitConfiguredAuthor(): string | null {
-  const nameRes = spawnSync("git", ["config", "--get", "user.name"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const emailRes = spawnSync("git", ["config", "--get", "user.email"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+function getAuthorStats(actions: FrontmatterAction[]): Array<[author: string, count: number]> {
+  const counts = new Map<string, number>();
+  for (const action of actions) counts.set(action.author, (counts.get(action.author) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => (b[1] - a[1] ? b[1] - a[1] : a[0].localeCompare(b[0])));
+}
 
-  const name = (nameRes.stdout ?? "").trim();
-  const email = (emailRes.stdout ?? "").trim();
-  if (!name && !email) return null;
-  if (name && email) return `${name} <${email}>`;
-  return name || email;
+function summarizeAuthors(authorStats: Array<[author: string, count: number]>, maxAuthors: number): string {
+  const lines: string[] = authorStats
+    .slice(0, maxAuthors)
+    .map(([author, count]) => `- ${author} (${count} file${count === 1 ? "" : "s"})`);
+  if (authorStats.length > maxAuthors) lines.push(`- …and ${authorStats.length - maxAuthors} more`);
+  return lines.join("\n");
 }
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -180,20 +179,34 @@ export async function runCli(argv: string[]): Promise<void> {
 
   const rootMoves = plan.actions.filter((a) => a.type === "rename" && !a.from.includes("/"));
   const docsRenames = plan.actions.filter((a) => a.type === "rename" && a.from.startsWith("docs/"));
-  const frontmatterAdds = plan.actions.filter((a) => a.type === "frontmatter");
+  const frontmatterAdds = plan.actions.filter((a): a is FrontmatterAction => a.type === "frontmatter");
+
+  const steps = [
+    {
+      id: "root-move",
+      title: "Relocate root Markdown docs into `docs/` (SimpleDoc convention)",
+      confirmLabel: "move root Markdown docs into `docs/`",
+      actions: rootMoves,
+    },
+    {
+      id: "docs-date-prefix",
+      title: "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
+      confirmLabel: "date-prefix `docs/` Markdown filenames using first commit date",
+      actions: docsRenames,
+    },
+    {
+      id: "frontmatter",
+      title: "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
+      confirmLabel: "add YAML frontmatter (title/author/date)",
+      actions: frontmatterAdds,
+    },
+  ].filter((s) => s.actions.length > 0);
 
   process.stdout.write("Planned changes:\n");
-  if (rootMoves.length > 0) {
-    process.stdout.write(`\nStep 1: Move root markdown files to docs/ (${rootMoves.length})\n`);
-    process.stdout.write(`${limitLines(formatActions(rootMoves), 30)}\n`);
-  }
-  if (docsRenames.length > 0) {
-    process.stdout.write(`\nStep 2: Add date prefixes to docs/ markdown files (${docsRenames.length})\n`);
-    process.stdout.write(`${limitLines(formatActions(docsRenames), 30)}\n`);
-  }
-  if (frontmatterAdds.length > 0) {
-    process.stdout.write(`\nStep 3: Add YAML frontmatter (${frontmatterAdds.length})\n`);
-    process.stdout.write(`${limitLines(formatActions(frontmatterAdds), 30)}\n`);
+  for (const [idx, step] of steps.entries()) {
+    const stepNo = idx + 1;
+    process.stdout.write(`\nStep ${stepNo}: ${step.title} (${step.actions.length})\n`);
+    process.stdout.write(`${limitLines(formatActions(step.actions), 30)}\n`);
   }
 
   if (args.dryRun) return;
@@ -219,43 +232,33 @@ export async function runCli(argv: string[]): Promise<void> {
       }
 
       if (frontmatterAdds.length > 0 && !args.authorOverride) {
-        const useGit = await confirm(rl, "Use per-file authors from git history for new frontmatter?", true);
+        const authorStats = getAuthorStats(frontmatterAdds);
+        process.stdout.write("\nDetected authors for inserted frontmatter (from git history):\n");
+        process.stdout.write(`${summarizeAuthors(authorStats, 10)}\n\n`);
+
+        const useGit = await confirm(
+          rl,
+          `Use per-file authors from git history for inserted frontmatter? (No = you'll be prompted to replace each of the ${authorStats.length} detected authors)`,
+          true,
+        );
         if (!useGit) {
-          const suggested = getGitConfiguredAuthor();
-          const answer = (
-            await rl.question(
-              suggested
-                ? `Author to use for inserted frontmatter (Name <email>) [${suggested}]: `
-                : "Author to use for inserted frontmatter (Name <email>): ",
-            )
-          ).trim();
-          args.authorOverride = answer || suggested;
-          if (!args.authorOverride) {
-            process.stderr.write("Author is required when not using git history.\n");
-            process.exitCode = 2;
-            return;
+          process.stdout.write(
+            "You'll now be prompted to replace each detected author. Press Enter to keep the original.\n\n",
+          );
+
+          const rewrites: Record<string, string> = {};
+          for (const [author, count] of authorStats) {
+            const answer = (await rl.question(`Replacement for ${author} (${count} files) [${author}]: `)).trim();
+            const replacement = answer || author;
+            rewrites[author] = replacement;
           }
+          args.authorRewrites = rewrites;
         }
       }
 
-      if (rootMoves.length > 0) {
-        const ok = await confirm(rl, "Proceed with step 1 (move root markdown to docs/)?", true);
-        if (!ok) {
-          process.stdout.write("Aborted.\n");
-          process.exitCode = 1;
-          return;
-        }
-      }
-      if (docsRenames.length > 0) {
-        const ok = await confirm(rl, "Proceed with step 2 (date-prefix docs/ markdown)?", true);
-        if (!ok) {
-          process.stdout.write("Aborted.\n");
-          process.exitCode = 1;
-          return;
-        }
-      }
-      if (frontmatterAdds.length > 0) {
-        const ok = await confirm(rl, "Proceed with step 3 (add YAML frontmatter)?", true);
+      for (const [idx, step] of steps.entries()) {
+        const stepNo = idx + 1;
+        const ok = await confirm(rl, `Proceed with step ${stepNo} (${step.confirmLabel})?`, true);
         if (!ok) {
           process.stdout.write("Aborted.\n");
           process.exitCode = 1;
@@ -276,7 +279,10 @@ export async function runCli(argv: string[]): Promise<void> {
   }
 
   try {
-    await runMigrationPlan(plan, { authorOverride: args.authorOverride });
+    await runMigrationPlan(plan, {
+      authorOverride: args.authorOverride,
+      authorRewrites: args.authorRewrites,
+    });
   } catch (err) {
     process.stderr.write(`${getErrorMessage(err)}\n`);
     process.exitCode = 1;

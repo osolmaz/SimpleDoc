@@ -1,20 +1,21 @@
-import { createInterface } from "node:readline/promises";
 import process from "node:process";
 import { Command, CommanderError } from "commander";
+import {
+  cancel,
+  confirm,
+  intro,
+  isCancel,
+  note,
+  outro,
+  spinner,
+  text,
+} from "@clack/prompts";
 import { formatActions, planMigration, runMigrationPlan } from "./migrator.js";
 import type { FrontmatterAction } from "./migrator.js";
 
-async function confirm(
-  rl: ReturnType<typeof createInterface>,
-  question: string,
-  defaultYes: boolean,
-) {
-  const suffix = defaultYes ? "[Y/n]" : "[y/N]";
-  const answer = (await rl.question(`${question} ${suffix} `))
-    .trim()
-    .toLowerCase();
-  if (!answer) return defaultYes;
-  return answer === "y" || answer === "yes";
+function abort(message = "Aborted."): void {
+  cancel(message);
+  process.exitCode = 1;
 }
 
 function limitLines(text: string, maxLines: number): string {
@@ -54,6 +55,28 @@ function summarizeAuthors(
   return lines.join("\n");
 }
 
+async function promptConfirm(
+  message: string,
+  initialValue: boolean,
+): Promise<boolean | null> {
+  const value = await confirm({ message, initialValue });
+  if (isCancel(value)) return null;
+  return value;
+}
+
+async function promptText(
+  message: string,
+  defaultValue: string,
+): Promise<string | null> {
+  const value = await text({
+    message,
+    placeholder: defaultValue,
+    defaultValue,
+  });
+  if (isCancel(value)) return null;
+  return value.trim() || defaultValue;
+}
+
 type MigrateOptions = {
   dryRun: boolean;
   yes: boolean;
@@ -81,6 +104,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       return;
     }
 
+    const hasTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
     if (plan.dirty && !options.force) {
       if (options.dryRun) {
         process.stderr.write(
@@ -130,20 +154,32 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       },
     ].filter((s) => s.actions.length > 0);
 
-    process.stdout.write("Planned changes:\n");
-    for (const [idx, step] of steps.entries()) {
-      const stepNo = idx + 1;
-      process.stdout.write(
-        `\nStep ${stepNo}: ${step.title} (${step.actions.length})\n`,
-      );
-      process.stdout.write(`${limitLines(formatActions(step.actions), 30)}\n`);
+    const interactiveWizard = hasTty && !options.yes && !options.dryRun;
+    if (interactiveWizard) {
+      intro("simpledoc migrate");
+      for (const [idx, step] of steps.entries()) {
+        const stepNo = idx + 1;
+        note(
+          limitLines(formatActions(step.actions), 30),
+          `Step ${stepNo}: ${step.title} (${step.actions.length})`,
+        );
+      }
+    } else {
+      process.stdout.write("Planned changes:\n");
+      for (const [idx, step] of steps.entries()) {
+        const stepNo = idx + 1;
+        process.stdout.write(
+          `\nStep ${stepNo}: ${step.title} (${step.actions.length})\n`,
+        );
+        process.stdout.write(
+          `${limitLines(formatActions(step.actions), 30)}\n`,
+        );
+      }
     }
 
     if (options.dryRun) return;
 
-    const interactive =
-      process.stdin.isTTY && process.stdout.isTTY && !options.yes;
-    if (!interactive && !options.yes) {
+    if (!hasTty && !options.yes) {
       process.stderr.write(
         "Refusing to apply changes without a TTY. Re-run with --yes.\n",
       );
@@ -157,86 +193,83 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     };
 
     let proceed = true;
-    if (interactive) {
-      const rl = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      try {
-        if (plan.dirty && !options.force) {
-          const contDirty = await confirm(
-            rl,
-            "Working tree is dirty. Continue anyway?",
-            false,
-          );
-          if (!contDirty) {
-            process.stdout.write("Aborted.\n");
-            process.exitCode = 1;
-            return;
-          }
-        }
-
-        if (frontmatterAdds.length > 0 && !args.authorOverride) {
-          const authorStats = getAuthorStats(frontmatterAdds);
-          process.stdout.write(
-            "\nDetected authors for inserted frontmatter (from git history):\n",
-          );
-          process.stdout.write(`${summarizeAuthors(authorStats, 10)}\n\n`);
-
-          const useGit = await confirm(
-            rl,
-            `Use per-file authors from git history for inserted frontmatter? (No = you'll be prompted to replace each of the ${authorStats.length} detected authors)`,
-            true,
-          );
-          if (!useGit) {
-            process.stdout.write(
-              "You'll now be prompted to replace each detected author. Press Enter to keep the original.\n\n",
-            );
-
-            const rewrites: Record<string, string> = {};
-            for (const [author, count] of authorStats) {
-              const answer = (
-                await rl.question(
-                  `Replacement for ${author} (${count} files) [${author}]: `,
-                )
-              ).trim();
-              const replacement = answer || author;
-              rewrites[author] = replacement;
-            }
-            args.authorRewrites = rewrites;
-          }
-        }
-
-        for (const [idx, step] of steps.entries()) {
-          const stepNo = idx + 1;
-          const ok = await confirm(
-            rl,
-            `Proceed with step ${stepNo} (${step.confirmLabel})?`,
-            true,
-          );
-          if (!ok) {
-            process.stdout.write("Aborted.\n");
-            process.exitCode = 1;
-            return;
-          }
-        }
-
-        proceed = await confirm(rl, "Apply all steps now?", true);
-      } finally {
-        rl.close();
+    if (interactiveWizard) {
+      if (plan.dirty && !options.force) {
+        const contDirty = await promptConfirm(
+          "Working tree is dirty. Continue anyway?",
+          false,
+        );
+        if (contDirty === null) return abort("Operation cancelled.");
+        if (!contDirty) return abort();
       }
+
+      if (frontmatterAdds.length > 0 && !args.authorOverride) {
+        const authorStats = getAuthorStats(frontmatterAdds);
+        note(
+          summarizeAuthors(authorStats, 10),
+          "Detected authors for inserted frontmatter (from git history)",
+        );
+
+        const useGit = await promptConfirm(
+          `Use per-file authors from git history for inserted frontmatter? (No = you'll be prompted to replace each of the ${authorStats.length} detected authors)`,
+          true,
+        );
+        if (useGit === null) return abort("Operation cancelled.");
+        if (!useGit) {
+          note(
+            "You'll now be prompted to replace each detected author. Press Enter to keep the original.",
+            "Author replacement",
+          );
+
+          const rewrites: Record<string, string> = {};
+          for (const [author, count] of authorStats) {
+            const replacement = await promptText(
+              `Replacement for ${author} (${count} files)`,
+              author,
+            );
+            if (replacement === null) return abort("Operation cancelled.");
+            rewrites[author] = replacement;
+          }
+          args.authorRewrites = rewrites;
+        }
+      }
+
+      for (const [idx, step] of steps.entries()) {
+        const stepNo = idx + 1;
+        const ok = await promptConfirm(
+          `Proceed with step ${stepNo} (${step.confirmLabel})?`,
+          true,
+        );
+        if (ok === null) return abort("Operation cancelled.");
+        if (!ok) return abort();
+      }
+
+      const apply = await promptConfirm("Apply all steps now?", true);
+      if (apply === null) return abort("Operation cancelled.");
+      proceed = apply;
     }
 
     if (!proceed) {
+      if (interactiveWizard) return abort();
       process.stdout.write("Aborted.\n");
       process.exitCode = 1;
       return;
     }
 
-    await runMigrationPlan(plan, args);
-    process.stdout.write(
-      "Done. Review with `git status` / `git diff` and commit when ready.\n",
-    );
+    if (interactiveWizard) {
+      const s = spinner();
+      s.start("Applying migration...");
+      await runMigrationPlan(plan, args);
+      s.stop("Migration applied.");
+      outro(
+        "Done. Review with `git status` / `git diff` and commit when ready.",
+      );
+    } else {
+      await runMigrationPlan(plan, args);
+      process.stdout.write(
+        "Done. Review with `git status` / `git diff` and commit when ready.\n",
+      );
+    }
   } catch (err) {
     process.stderr.write(`${getErrorMessage(err)}\n`);
     process.exitCode = 1;

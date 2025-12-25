@@ -234,6 +234,34 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     );
 
     const defaultPreviews: StepPreview[] = [];
+
+    if (rootMovesAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-root-move",
+        title:
+          "Relocate root Markdown docs into `docs/` (SimpleDoc convention)",
+        actionsText: formatActions(rootMovesAll),
+        actionCount: rootMovesAll.length,
+      });
+
+    if (docsRenamesAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-docs-date-prefix",
+        title:
+          "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
+        actionsText: formatActions(docsRenamesAll),
+        actionCount: docsRenamesAll.length,
+      });
+
+    if (frontmatterAddsAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-frontmatter",
+        title:
+          "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
+        actionsText: formatActions(frontmatterAddsAll),
+        actionCount: frontmatterAddsAll.length,
+      });
+
     if (installActionsAll.length > 0) {
       const createAgents = installActionsAll.filter(
         (a) => a.type === "write-file" && a.path === AGENTS_FILE,
@@ -269,33 +297,6 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         });
     }
 
-    if (rootMovesAll.length > 0)
-      defaultPreviews.push({
-        id: "migrate-root-move",
-        title:
-          "Relocate root Markdown docs into `docs/` (SimpleDoc convention)",
-        actionsText: formatActions(rootMovesAll),
-        actionCount: rootMovesAll.length,
-      });
-
-    if (docsRenamesAll.length > 0)
-      defaultPreviews.push({
-        id: "migrate-docs-date-prefix",
-        title:
-          "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
-        actionsText: formatActions(docsRenamesAll),
-        actionCount: docsRenamesAll.length,
-      });
-
-    if (frontmatterAddsAll.length > 0)
-      defaultPreviews.push({
-        id: "migrate-frontmatter",
-        title:
-          "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
-        actionsText: formatActions(frontmatterAddsAll),
-        actionCount: frontmatterAddsAll.length,
-      });
-
     if (defaultPreviews.length === 0) {
       process.stdout.write("No installation or migration needed.\n");
       return;
@@ -308,7 +309,8 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         process.stdout.write(
           `\nStep ${stepNo}: ${step.title} (${step.actionCount})\n`,
         );
-        process.stdout.write(`${limitLines(step.actionsText, 30)}\n`);
+        const preview = step.actionsText.trim();
+        if (preview) process.stdout.write(`${limitLines(preview, 3)}\n`);
       }
     };
 
@@ -328,11 +330,11 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (options.yes) {
       printPreviews(defaultPreviews);
-      await applyInstallationActions(planAll.repoRootAbs, installActionsAll);
       await runMigrationPlan(planAll, {
         authorOverride: options.author ?? null,
         authorRewrites: null,
       });
+      await applyInstallationActions(planAll.repoRootAbs, installActionsAll);
       process.stdout.write(
         "Done. Review with `git status` / `git diff` and commit when ready.\n",
       );
@@ -361,43 +363,9 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     let addAttentionLine = false;
     let addHowToDoc = false;
 
-    if (!installStatus.agentsExists) {
-      noteWrapped(
-        AGENTS_ATTENTION_LINE,
-        `Proposed: Create \`${AGENTS_FILE}\` (includes the reminder line)`,
-      );
-      const include = await promptConfirm(`Create \`${AGENTS_FILE}\`?`, true);
-      if (include === null) return abort("Operation cancelled.");
-      createAgentsFile = include;
-    } else if (!installStatus.agentsHasAttentionLine) {
-      noteWrapped(
-        AGENTS_ATTENTION_LINE,
-        `Proposed: Add the reminder line to \`${AGENTS_FILE}\``,
-      );
-      const include = await promptConfirm(
-        `Add this reminder line to \`${AGENTS_FILE}\`?`,
-        true,
-      );
-      if (include === null) return abort("Operation cancelled.");
-      addAttentionLine = include;
-    }
-
-    if (!installStatus.howToDocExists) {
-      noteWrapped(
-        `Will create \`${HOW_TO_DOC_FILE}\` from the bundled SimpleDoc template (won't overwrite if it already exists).`,
-        "Proposed: Add docs/HOW_TO_DOC.md",
-      );
-      const include = await promptConfirm(
-        `Create \`${HOW_TO_DOC_FILE}\` template?`,
-        true,
-      );
-      if (include === null) return abort("Operation cancelled.");
-      addHowToDoc = include;
-    }
-
     if (rootMovesAll.length > 0) {
       noteWrapped(
-        limitLines(formatActions(rootMovesAll), 30),
+        "Moves lowercase/date-prefixed Markdown files in the repo root into `docs/` (date prefix is derived from first git commit date when missing).",
         `Proposed: Relocate root Markdown docs into \`docs/\` (${rootMovesAll.length})`,
       );
     }
@@ -412,7 +380,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (docsRenamesAll.length > 0) {
       noteWrapped(
-        limitLines(formatActions(docsRenamesAll), 30),
+        "Renames lowercase Markdown docs under `docs/` to `YYYY-MM-DD-…` using the file’s first git commit date.",
         `Proposed: Date-prefix \`docs/\` Markdown filenames (${docsRenamesAll.length})`,
       );
     }
@@ -437,7 +405,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     let includeFrontmatter = false;
     if (frontmatterAdds.length > 0) {
       noteWrapped(
-        limitLines(formatActions(frontmatterAdds), 30),
+        "Inserts YAML frontmatter (`title`, `author`, `date`) at the top of each date-prefixed doc missing it. Title is derived from the first `#` heading (or filename).",
         `Proposed: Insert missing YAML frontmatter (${frontmatterAdds.length})`,
       );
       const include = await promptConfirm(
@@ -480,6 +448,40 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       }
     }
 
+    if (!installStatus.agentsExists) {
+      noteWrapped(
+        AGENTS_ATTENTION_LINE,
+        `Proposed: Create \`${AGENTS_FILE}\` (includes the reminder line)`,
+      );
+      const include = await promptConfirm(`Create \`${AGENTS_FILE}\`?`, true);
+      if (include === null) return abort("Operation cancelled.");
+      createAgentsFile = include;
+    } else if (!installStatus.agentsHasAttentionLine) {
+      noteWrapped(
+        AGENTS_ATTENTION_LINE,
+        `Proposed: Add the reminder line to \`${AGENTS_FILE}\``,
+      );
+      const include = await promptConfirm(
+        `Add this reminder line to \`${AGENTS_FILE}\`?`,
+        true,
+      );
+      if (include === null) return abort("Operation cancelled.");
+      addAttentionLine = include;
+    }
+
+    if (!installStatus.howToDocExists) {
+      noteWrapped(
+        `Will create \`${HOW_TO_DOC_FILE}\` from the bundled SimpleDoc template (won't overwrite if it already exists).`,
+        "Proposed: Add docs/HOW_TO_DOC.md",
+      );
+      const include = await promptConfirm(
+        `Create \`${HOW_TO_DOC_FILE}\` template?`,
+        true,
+      );
+      if (include === null) return abort("Operation cancelled.");
+      addHowToDoc = include;
+    }
+
     const selectedInstallActions = await buildInstallationActions({
       createAgentsFile,
       addAttentionLine,
@@ -491,39 +493,6 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     );
 
     const selectedSteps: StepPreview[] = [];
-    const selectedCreateAgents = selectedInstallActions.filter(
-      (a) => a.type === "write-file" && a.path === AGENTS_FILE,
-    );
-    if (selectedCreateAgents.length > 0)
-      selectedSteps.push({
-        id: "install-create-agents",
-        title: `Create \`${AGENTS_FILE}\``,
-        actionsText: formatInstallActions(selectedCreateAgents),
-        actionCount: selectedCreateAgents.length,
-      });
-
-    const selectedAddLine = selectedInstallActions.filter(
-      (a) => a.type === "append-line" && a.path === AGENTS_FILE,
-    );
-    if (selectedAddLine.length > 0)
-      selectedSteps.push({
-        id: "install-add-attention-line",
-        title: `Add reminder line to \`${AGENTS_FILE}\``,
-        actionsText: formatInstallActions(selectedAddLine),
-        actionCount: selectedAddLine.length,
-      });
-
-    const selectedHowToDoc = selectedInstallActions.filter(
-      (a) => a.type === "write-file" && a.path === HOW_TO_DOC_FILE,
-    );
-    if (selectedHowToDoc.length > 0)
-      selectedSteps.push({
-        id: "install-how-to-doc",
-        title: `Create \`${HOW_TO_DOC_FILE}\` template`,
-        actionsText: formatInstallActions(selectedHowToDoc),
-        actionCount: selectedHowToDoc.length,
-      });
-
     const selectedRootMoves = selectedMigrationActions.filter(
       (a) => a.type === "rename" && !a.from.includes("/"),
     );
@@ -557,18 +526,89 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         actionCount: selectedFrontmatters.length,
       });
 
+    const selectedCreateAgents = selectedInstallActions.filter(
+      (a) => a.type === "write-file" && a.path === AGENTS_FILE,
+    );
+    if (selectedCreateAgents.length > 0)
+      selectedSteps.push({
+        id: "install-create-agents",
+        title: `Create \`${AGENTS_FILE}\``,
+        actionsText: formatInstallActions(selectedCreateAgents),
+        actionCount: selectedCreateAgents.length,
+      });
+
+    const selectedAddLine = selectedInstallActions.filter(
+      (a) => a.type === "append-line" && a.path === AGENTS_FILE,
+    );
+    if (selectedAddLine.length > 0)
+      selectedSteps.push({
+        id: "install-add-attention-line",
+        title: `Add reminder line to \`${AGENTS_FILE}\``,
+        actionsText: formatInstallActions(selectedAddLine),
+        actionCount: selectedAddLine.length,
+      });
+
+    const selectedHowToDoc = selectedInstallActions.filter(
+      (a) => a.type === "write-file" && a.path === HOW_TO_DOC_FILE,
+    );
+    if (selectedHowToDoc.length > 0)
+      selectedSteps.push({
+        id: "install-how-to-doc",
+        title: `Create \`${HOW_TO_DOC_FILE}\` template`,
+        actionsText: formatInstallActions(selectedHowToDoc),
+        actionCount: selectedHowToDoc.length,
+      });
+
     if (selectedSteps.length === 0) {
       outro("No changes selected.");
       return;
     }
 
-    for (const [idx, step] of selectedSteps.entries()) {
-      const stepNo = idx + 1;
-      noteWrapped(
-        limitLines(step.actionsText, 30),
-        `Summary step ${stepNo}: ${step.title} (${step.actionCount})`,
+    const summaryLines: string[] = [];
+    const renameCount = selectedMigrationActions.filter(
+      (a) => a.type === "rename",
+    ).length;
+    const frontmatterCount = selectedMigrationActions.filter(
+      (a) => a.type === "frontmatter",
+    ).length;
+
+    if (renameCount > 0) {
+      summaryLines.push(
+        `- Rename/move Markdown files: ${renameCount} file${renameCount === 1 ? "" : "s"}`,
       );
     }
+    if (frontmatterCount > 0) {
+      summaryLines.push(
+        `- Insert YAML frontmatter: ${frontmatterCount} file${frontmatterCount === 1 ? "" : "s"}`,
+      );
+    }
+
+    for (const action of selectedInstallActions) {
+      if (action.type === "write-file" && action.path === AGENTS_FILE) {
+        summaryLines.push(`- Create \`${AGENTS_FILE}\``);
+        continue;
+      }
+      if (action.type === "append-line" && action.path === AGENTS_FILE) {
+        summaryLines.push(`- Update \`${AGENTS_FILE}\` (add reminder line)`);
+        continue;
+      }
+      if (action.type === "write-file" && action.path === HOW_TO_DOC_FILE) {
+        summaryLines.push(`- Create \`${HOW_TO_DOC_FILE}\``);
+        continue;
+      }
+    }
+
+    const totalFiles = new Set<string>();
+    for (const action of selectedMigrationActions) {
+      if (action.type === "rename") totalFiles.add(action.to);
+      else if (action.type === "frontmatter") totalFiles.add(action.path);
+    }
+    for (const action of selectedInstallActions) totalFiles.add(action.path);
+    summaryLines.push(
+      `- Total files affected: ${totalFiles.size} file${totalFiles.size === 1 ? "" : "s"}`,
+    );
+
+    noteWrapped(summaryLines.join("\n"), "Summary of selected changes");
 
     const apply = await promptConfirm("Apply these changes now?", true);
     if (apply === null) return abort("Operation cancelled.");
@@ -576,7 +616,6 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     const s = spinner();
     s.start("Applying changes...");
-    await applyInstallationActions(planAll.repoRootAbs, selectedInstallActions);
     await runMigrationPlan(
       { ...planWithFrontmatter, actions: selectedMigrationActions },
       {
@@ -584,6 +623,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         authorRewrites,
       },
     );
+    await applyInstallationActions(planAll.repoRootAbs, selectedInstallActions);
     s.stop("Done.");
     outro("Review with `git status` / `git diff` and commit when ready.");
   } catch (err) {

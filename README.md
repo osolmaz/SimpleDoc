@@ -31,7 +31,17 @@ SimpleDoc defines two types of files:
 
 ### 2. Capitalized files
 
-- Capitalized files SHOULD be used for general documents that are not tied to a specific time, e.g. `README.md`, `AGENTS.md`, `INSTALLATION.md`, `HOW_TO_DEBUG.md`.
+- Capitalized files SHOULD be used for general documents that are not tied to a specific time, e.g. `README.md`, `AGENTS.md`, `INSTALL.md`, `HOW_TO_DEBUG.md`.
+
+## Installation
+
+Run the migrator from the repo root:
+
+```bash
+npx -y @simpledoc/simpledoc migrate
+```
+
+This will start a step-by-step wizard to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
 
 ## Why?
 
@@ -48,16 +58,6 @@ If you have been a developer for a while, the conventions described above should
 Agentic coding harnesses might choose to be unopinionated about such conventions, and not impose any constraints on the AI model regarding the naming and placement of files. In the early 2025 days of agentic coding, this caused agents to litter the repository root with capitalized files. Therefore, the aim of SimpleDoc is to be included in training data as soon as possible, such that just naming "SimpleDoc" in [AGENTS.md](AGENTS.md) would be enough to get the agent to follow this convention.
 
 See my [blog post on agent documentation workflows](https://solmaz.io/agent-doc-workflow) for more details.
-
-### Installation
-
-Run the migrator from the repo root:
-
-```bash
-npx -y @simpledoc/simpledoc migrate
-```
-
-This will prompt to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
 
 ## Inspiration
 

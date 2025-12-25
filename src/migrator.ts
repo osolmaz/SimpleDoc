@@ -268,7 +268,19 @@ export function formatActions(actions: MigrationAction[]): string {
   return lines.join("\n");
 }
 
-export async function planMigration(): Promise<MigrationPlan> {
+export type MigrationPlanOptions = {
+  moveRootMarkdownToDocs?: boolean;
+  renameDocsToDatePrefix?: boolean;
+  addFrontmatter?: boolean;
+};
+
+export async function planMigration(
+  options: MigrationPlanOptions = {},
+): Promise<MigrationPlan> {
+  const moveRootMarkdownToDocs = options.moveRootMarkdownToDocs ?? true;
+  const renameDocsToDatePrefix = options.renameDocsToDatePrefix ?? true;
+  const addFrontmatter = options.addFrontmatter ?? true;
+
   const repoRootAbs = getRepoRoot();
   const repoRoot = toPosixRelPath(repoRootAbs);
 
@@ -325,6 +337,11 @@ export async function planMigration(): Promise<MigrationPlan> {
     }
 
     if (isRoot) {
+      if (!moveRootMarkdownToDocs) {
+        desiredTargets.set(filePath, filePath);
+        continue;
+      }
+
       if (datePrefix) {
         desiredTargets.set(filePath, path.posix.join("docs", base));
         continue;
@@ -347,6 +364,11 @@ export async function planMigration(): Promise<MigrationPlan> {
 
     if (isInDocs) {
       if (datePrefix) {
+        desiredTargets.set(filePath, filePath);
+        continue;
+      }
+
+      if (!renameDocsToDatePrefix) {
         desiredTargets.set(filePath, filePath);
         continue;
       }
@@ -392,37 +414,39 @@ export async function planMigration(): Promise<MigrationPlan> {
   }
 
   const frontmatterAdds: FrontmatterAction[] = [];
-  for (const filePath of candidates) {
-    const base = path.posix.basename(filePath);
-    const targetPath = renameMap.get(filePath) ?? filePath;
-    const targetBase = path.posix.basename(targetPath);
-    const datePrefix = isDatePrefixedBaseName(targetBase);
+  if (addFrontmatter) {
+    for (const filePath of candidates) {
+      const base = path.posix.basename(filePath);
+      const targetPath = renameMap.get(filePath) ?? filePath;
+      const targetBase = path.posix.basename(targetPath);
+      const datePrefix = isDatePrefixedBaseName(targetBase);
 
-    if (!datePrefix) continue;
-    if (isCapitalizedDoc(base)) continue;
+      if (!datePrefix) continue;
+      if (isCapitalizedDoc(base)) continue;
 
-    const absTarget = path.join(repoRootAbs, ...targetPath.split("/"));
-    let content: string;
-    try {
-      content = await fs.readFile(absTarget, "utf8");
-    } catch {
-      const absOld = path.join(repoRootAbs, ...filePath.split("/"));
-      content = await fs.readFile(absOld, "utf8");
+      const absTarget = path.join(repoRootAbs, ...targetPath.split("/"));
+      let content: string;
+      try {
+        content = await fs.readFile(absTarget, "utf8");
+      } catch {
+        const absOld = path.join(repoRootAbs, ...filePath.split("/"));
+        content = await fs.readFile(absOld, "utf8");
+      }
+
+      if (hasFrontmatter(content)) continue;
+
+      const meta = fileMeta.get(filePath);
+      const author = meta?.author ?? "Unknown <unknown@example.com>";
+      const date = datePrefix;
+      const title = titleFromMarkdown(content) ?? titleFromSlug(targetBase);
+      frontmatterAdds.push({
+        type: "frontmatter",
+        path: targetPath,
+        title,
+        author,
+        date,
+      });
     }
-
-    if (hasFrontmatter(content)) continue;
-
-    const meta = fileMeta.get(filePath);
-    const author = meta?.author ?? "Unknown <unknown@example.com>";
-    const date = datePrefix;
-    const title = titleFromMarkdown(content) ?? titleFromSlug(targetBase);
-    frontmatterAdds.push({
-      type: "frontmatter",
-      path: targetPath,
-      title,
-      author,
-      date,
-    });
   }
 
   const actions: MigrationAction[] = [...finalRenames, ...frontmatterAdds];

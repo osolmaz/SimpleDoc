@@ -51,27 +51,13 @@ See my [blog post on agent documentation workflows](https://solmaz.io/agent-doc-
 
 ### Installation
 
-For setting up SimpleDoc in your agentic repository, see [INSTALL.md](./docs/INSTALL.md).
-
-## Migrator (CLI)
-
-This repo includes a one-step migrator that can retrofit an existing repo to SimpleDoc conventions:
-
-- Moves any **lowercase** Markdown files in the repo root into `docs/`.
-- For Markdown files under `docs/` that are **not** date-prefixed (and not capitalized), renames them to `YYYY-MM-DD-...` using the file’s first commit date.
-- Adds YAML frontmatter (`title`, `author`, `date`) to date-prefixed docs missing it, using the file’s first commit author/date.
-
-Run it from a git repo:
+Run the migrator from the repo root:
 
 ```bash
-npx -y @simpledoc/simpledoc migrate --dry-run   # preview
-npx -y @simpledoc/simpledoc migrate             # interactive wizard
-npx -y @simpledoc/simpledoc migrate --author "Name <email>"   # override frontmatter author
-
-# or, from this repo:
-npm run migrate:dry                           # preview
-npm run migrate                               # interactive wizard
+npx -y @simpledoc/simpledoc migrate
 ```
+
+This will prompt to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
 
 ## Inspiration
 

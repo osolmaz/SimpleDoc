@@ -52,6 +52,25 @@ See my [blog post on agent documentation workflows](https://solmaz.io/agent-doc-
 
 For setting up SimpleDoc in your agentic repository, see [INSTALL.md](./docs/INSTALL.md).
 
+## Migrator (CLI)
+
+This repo includes a one-step migrator that can retrofit an existing repo to SimpleDoc conventions:
+
+- Moves any **lowercase** Markdown files in the repo root into `docs/`.
+- For Markdown files under `docs/` that are **not** date-prefixed (and not capitalized), renames them to `YYYY-MM-DD-...` using the file’s first commit date.
+- Adds YAML frontmatter (`title`, `author`, `date`) to date-prefixed docs missing it, using the file’s first commit author/date.
+
+Run it from a git repo:
+
+```bash
+npx -y @simpledoc/simpledoc migrate --dry-run   # preview
+npx -y @simpledoc/simpledoc migrate             # interactive wizard
+
+# or, from this repo:
+pnpm migrate:dry                                 # preview
+pnpm migrate                                     # interactive wizard
+```
+
 ## Inspiration
 
 The ISO 8601 date-prefixed format was inspired by the [Jekyll](https://jekyllrb.com/) blog engine, though the framework itself defines `_posts/` folder for posts which is not exactly human readable.

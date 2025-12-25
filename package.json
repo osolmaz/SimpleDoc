@@ -1,0 +1,42 @@
+{
+  "name": "@simpledoc/simpledoc",
+  "version": "0.1.0",
+  "description": "SimpleDoc conventions and CLI tooling for Markdown documentation in codebases.",
+  "license": "MIT",
+  "author": "Onur Solmaz <info@solmaz.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osolmaz/SimpleDoc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/osolmaz/SimpleDoc/issues"
+  },
+  "homepage": "https://github.com/osolmaz/SimpleDoc#readme",
+  "keywords": [
+    "simpledoc",
+    "documentation",
+    "markdown",
+    "migrator",
+    "cli"
+  ],
+  "type": "module",
+  "bin": {
+    "simpledoc": "bin/simpledoc.js"
+  },
+  "scripts": {
+    "migrate": "node ./bin/simpledoc.js migrate",
+    "migrate:dry": "node ./bin/simpledoc.js migrate --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

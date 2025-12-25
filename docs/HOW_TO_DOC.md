@@ -64,10 +64,10 @@ Every doc **must** start with YAML front matter:
 
 ```yaml
 ---
-date: 2025-10-24          # From `date +%Y-%m-%d`
+date: 2025-10-24 # From `date +%Y-%m-%d`
 author: Name <email@example.com>
 title: Short Descriptive Title
-tags: [tag1, tag2]        # Optional but recommended
+tags: [tag1, tag2] # Optional but recommended
 ---
 ```
 

@@ -46,7 +46,7 @@ If the name and email are not available for some reason, ask the user to provide
 
 ## File Naming
 
-- Format: `YYYY-MM-DD-descriptive-title.md`. Always use lower case, words separated by hyphens.
+- Format: `YYYY-MM-DD-descriptive-title.md`. The date MUST use dashes; the rest SHOULD be lowercase with hyphens (avoid underscores).
 - Choose names that reflect the problem or topic, not the team or author.
 - Example: `2025-06-20-api-migration-guide.md`.
 - Place the file in the appropriate folder before committing.
@@ -81,7 +81,8 @@ SimpleDoc Guidelines:
 
 ## Final Checks Before Submitting
 
-- [ ] Filename follows the `YYYY-MM-DD-…` pattern and lives in the correct directory.
+- [ ] Filename follows the `YYYY-MM-DD-…` pattern (date uses dashes) and lives in the correct directory.
+- [ ] Capitalized multi-word filenames use underscores (e.g., `CODE_OF_CONDUCT.md`).
 - [ ] Timeless vs. dated classification is correct and filenames reflect the choice.
 - [ ] Front matter is complete and accurate.
 - [ ] Links to related documentation exist where applicable.

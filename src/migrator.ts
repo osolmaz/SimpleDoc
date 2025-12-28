@@ -1,16 +1,25 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
-type FileMeta = {
-  dateIso: string;
-  date: string;
-  author: string;
-  name: string;
-  email: string;
-};
+import { classifyDoc } from "./doc-classifier.js";
+import { createGitClient, type FileMeta, type GitClient } from "./git.js";
+import type { RenameCaseMode } from "./naming.js";
+import {
+  applyRenameCase,
+  extractDatePrefix,
+  getCanonicalBaseName,
+  isLowercaseDocBaseName,
+  isMarkdownFile,
+} from "./naming.js";
+
+export type { RenameCaseMode } from "./naming.js";
 
 export type RenameAction = { type: "rename"; from: string; to: string };
+export type ReferenceUpdateAction = {
+  type: "references";
+  path: string;
+  matchCount: number;
+};
 export type FrontmatterAction = {
   type: "frontmatter";
   path: string;
@@ -18,7 +27,10 @@ export type FrontmatterAction = {
   author: string;
   date: string;
 };
-export type MigrationAction = RenameAction | FrontmatterAction;
+export type MigrationAction =
+  | RenameAction
+  | FrontmatterAction
+  | ReferenceUpdateAction;
 
 export type MigrationPlan = {
   repoRootAbs: string;
@@ -28,79 +40,11 @@ export type MigrationPlan = {
   actions: MigrationAction[];
 };
 
-function runGit(args: string[], { cwd }: { cwd: string }): string {
-  const res = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  if (res.error) throw res.error;
-  if (res.status !== 0) {
-    const msg = (res.stderr || res.stdout || "").trim();
-    throw new Error(
-      msg || `git ${args.join(" ")} failed with code ${res.status}`,
-    );
-  }
-  return res.stdout;
-}
-
-function getRepoRoot(): string {
-  const res = spawnSync("git", ["rev-parse", "--show-toplevel"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  if (res.error) throw res.error;
-  if (res.status !== 0)
-    throw new Error("Not a git repository (or git is not available).");
-  return res.stdout.trim();
-}
-
-function isDirty(cwd: string): boolean {
-  const out = runGit(["status", "--porcelain"], { cwd });
-  return out.trim().length > 0;
-}
-
-function isMarkdownFile(filePath: string): boolean {
-  return filePath.endsWith(".md") || filePath.endsWith(".mdx");
-}
-
-function isLowercaseDocBaseName(baseName: string): boolean {
-  const name = baseName.replace(/\.(md|mdx)$/i, "");
-  return /[a-z]/.test(name) && !/[A-Z]/.test(name);
-}
-
-function isDatePrefixedBaseName(baseName: string): string | null {
-  const m = baseName.match(/^(\d{4}-\d{2}-\d{2})-/);
-  return m ? m[1] : null;
-}
-
-function isCapitalizedDoc(baseName: string): boolean {
-  const name = baseName.replace(/\.(md|mdx)$/i, "");
-  return /[A-Z]/.test(name);
-}
-
-function slugifyBaseName(baseName: string): string {
-  const name = baseName.replace(/\.(md|mdx)$/i, "");
-  const ext = baseName.slice(name.length);
-
-  const slug = name
-    .trim()
-    .toLocaleLowerCase("en-US")
-    .replace(/[\s_]+/g, "-")
-    .replace(/[^\p{L}\p{N}-]+/gu, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return `${slug}${ext}`;
-}
-
 function titleFromSlug(slug: string): string {
   const words = slug
     .replace(/\.(md|mdx)$/i, "")
-    .replace(/^\d{4}-\d{2}-\d{2}-/, "")
-    .split("-")
+    .replace(/^\d{4}-\d{2}-\d{2}[-_\s]+/, "")
+    .split(/[-_\s]+/)
     .filter(Boolean);
   if (words.length === 0) return "Untitled";
   return words
@@ -132,6 +76,116 @@ function yamlQuote(value: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type ReferenceReplacement = { from: string; to: string };
+
+function buildReferenceReplacements(
+  renames: RenameAction[],
+): ReferenceReplacement[] {
+  const replacements = new Map<string, string>();
+  for (const rename of renames) {
+    replacements.set(rename.from, rename.to);
+    replacements.set(`./${rename.from}`, `./${rename.to}`);
+    replacements.set(`../${rename.from}`, `../${rename.to}`);
+  }
+  return [...replacements.entries()].map(([from, to]) => ({ from, to }));
+}
+
+function buildReplacementRegex(
+  replacements: ReferenceReplacement[],
+): RegExp | null {
+  if (replacements.length === 0) return null;
+  const pattern = replacements
+    .map((r) => r.from)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join("|");
+  return new RegExp(pattern, "g");
+}
+
+function countMatches(content: string, regex: RegExp): number {
+  const matches = content.match(regex);
+  return matches ? matches.length : 0;
+}
+
+const MAX_REFERENCE_UPDATE_BYTES = 1_000_000;
+const REFERENCE_IGNORE_DIR_PREFIXES = [
+  "node_modules/",
+  "dist/",
+  "dist-test/",
+  ".git/",
+];
+const REFERENCE_IGNORE_EXTENSIONS = new Set<string>([
+  ".7z",
+  ".avi",
+  ".bmp",
+  ".class",
+  ".dll",
+  ".dmg",
+  ".exe",
+  ".gif",
+  ".gz",
+  ".ico",
+  ".jar",
+  ".jpeg",
+  ".jpg",
+  ".mkv",
+  ".mov",
+  ".mp3",
+  ".mp4",
+  ".o",
+  ".otf",
+  ".pdf",
+  ".png",
+  ".so",
+  ".tar",
+  ".tgz",
+  ".tiff",
+  ".ttf",
+  ".webp",
+  ".woff",
+  ".woff2",
+  ".zip",
+]);
+
+function shouldScanForReferenceUpdates(relPath: string): boolean {
+  for (const prefix of REFERENCE_IGNORE_DIR_PREFIXES) {
+    if (relPath.startsWith(prefix)) return false;
+  }
+  const ext = path.posix.extname(relPath).toLowerCase();
+  if (REFERENCE_IGNORE_EXTENSIONS.has(ext)) return false;
+  return true;
+}
+
+async function readSmallTextFileForReferences(
+  repoRootAbs: string,
+  relPath: string,
+): Promise<string | null> {
+  if (!shouldScanForReferenceUpdates(relPath)) return null;
+
+  const abs = path.join(repoRootAbs, ...relPath.split("/"));
+  let stat: { size: number };
+  try {
+    stat = await fs.stat(abs);
+  } catch {
+    return null;
+  }
+  if (stat.size > MAX_REFERENCE_UPDATE_BYTES) return null;
+
+  let content: string;
+  try {
+    content = await fs.readFile(abs, "utf8");
+  } catch {
+    return null;
+  }
+  if (content.includes("\0")) return null;
+
+  return content;
+}
+
 function buildFrontmatter({
   title,
   author,
@@ -148,19 +202,6 @@ function buildFrontmatter({
     `date: ${yamlQuote(date)}`,
     "---",
   ].join("\n");
-}
-
-function getCreationInfo(cwd: string, filePath: string): FileMeta | null {
-  const out = runGit(
-    ["log", "--follow", "--format=%aI\t%aN\t%aE", "--", filePath],
-    { cwd },
-  );
-  const lines = out.trim().split("\n").filter(Boolean);
-  if (lines.length === 0) return null;
-  const [dateIso, name, email] = lines[lines.length - 1]!.split("\t");
-  const date = dateIso!.slice(0, 10);
-  const author = email ? `${name} <${email}>` : name!;
-  return { dateIso: dateIso!, date, author, name: name!, email: email ?? "" };
 }
 
 async function getFileSystemInfo(
@@ -260,6 +301,8 @@ export function formatActions(actions: MigrationAction[]): string {
       lines.push(`- rename: ${action.from} -> ${action.to}`);
     else if (action.type === "frontmatter")
       lines.push(`- frontmatter: ${action.path}`);
+    else if (action.type === "references")
+      lines.push(`- update references: ${action.path} (${action.matchCount})`);
     else {
       const exhaustiveCheck: never = action;
       throw new Error(`Unknown action: ${String(exhaustiveCheck)}`);
@@ -269,124 +312,164 @@ export function formatActions(actions: MigrationAction[]): string {
 }
 
 export type MigrationPlanOptions = {
+  cwd?: string;
   moveRootMarkdownToDocs?: boolean;
   renameDocsToDatePrefix?: boolean;
   addFrontmatter?: boolean;
+  renameCaseOverrides?: Record<string, RenameCaseMode>;
+  includeCanonicalRenames?: boolean;
+  normalizeDatePrefixedDocs?: boolean;
+  git?: GitClient;
 };
 
 export async function planMigration(
   options: MigrationPlanOptions = {},
 ): Promise<MigrationPlan> {
+  const cwd = options.cwd ?? process.cwd();
   const moveRootMarkdownToDocs = options.moveRootMarkdownToDocs ?? true;
   const renameDocsToDatePrefix = options.renameDocsToDatePrefix ?? true;
   const addFrontmatter = options.addFrontmatter ?? true;
+  const renameCaseOverrides = options.renameCaseOverrides ?? {};
+  const includeCanonicalRenames = options.includeCanonicalRenames ?? true;
+  const normalizeDatePrefixedDocs = options.normalizeDatePrefixedDocs ?? true;
+  const git = options.git ?? createGitClient();
 
-  const repoRootAbs = getRepoRoot();
+  const getRenameCaseMode = (filePath: string): RenameCaseMode =>
+    renameCaseOverrides[filePath] ?? "lowercase";
+
+  const repoRootAbs = await git.getRepoRoot(cwd);
   const repoRoot = toPosixRelPath(repoRootAbs);
 
-  const dirty = isDirty(repoRootAbs);
+  const dirty = await git.isDirty(repoRootAbs);
 
-  const tracked = runGit(["ls-files", "-z"], { cwd: repoRootAbs })
-    .split("\0")
-    .filter(Boolean)
-    .map((p) => p.trim());
-  const trackedSet = new Set(tracked);
+  const trackedSet = new Set(await git.listTrackedFiles(repoRootAbs));
 
   const rootFiles = await listRootFiles(repoRootAbs);
   const rootMarkdown = rootFiles.filter((f) => {
     if (!isMarkdownFile(f)) return false;
-    return Boolean(isDatePrefixedBaseName(f)) || isLowercaseDocBaseName(f);
+    return (
+      Boolean(getCanonicalBaseName(f)) ||
+      Boolean(extractDatePrefix(f)) ||
+      isLowercaseDocBaseName(f)
+    );
   });
 
-  const existingAll = runGit(
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    {
-      cwd: repoRootAbs,
-    },
-  )
-    .split("\0")
-    .filter(Boolean)
-    .map((p) => p.trim());
-  const existingAllSet = new Set(existingAll);
+  const existingAll = await git.listRepoFiles(repoRootAbs);
+  const existingOnDisk: string[] = [];
+  for (const filePath of existingAll) {
+    if (await pathExists(repoRootAbs, filePath)) existingOnDisk.push(filePath);
+  }
+  const existingAllSet = new Set(existingOnDisk);
 
-  const docsMarkdown = existingAll.filter(
+  const docsMarkdown = existingOnDisk.filter(
     (p) => p.startsWith("docs/") && isMarkdownFile(p),
   );
   const candidates = [...new Set([...rootMarkdown, ...docsMarkdown])];
 
   const fileMeta = new Map<string, FileMeta>();
-  for (const filePath of candidates) {
+  const getMeta = async (filePath: string): Promise<FileMeta> => {
+    const cached = fileMeta.get(filePath);
+    if (cached) return cached;
+
     let info: FileMeta | null = null;
-    if (trackedSet.has(filePath)) info = getCreationInfo(repoRootAbs, filePath);
+    if (trackedSet.has(filePath))
+      info = await git.getCreationInfo(repoRootAbs, filePath);
     if (!info) info = await getFileSystemInfo(repoRootAbs, filePath);
     fileMeta.set(filePath, info);
-  }
+    return info;
+  };
 
   const desiredTargets = new Map<string, string>();
   for (const filePath of candidates) {
-    const base = path.posix.basename(filePath);
-    const datePrefix = isDatePrefixedBaseName(base);
-    const isCap = isCapitalizedDoc(base);
+    const classification = classifyDoc(filePath);
+    const base = classification.baseName;
 
-    const isRoot = !filePath.includes("/");
-    const isInDocs = filePath.startsWith("docs/");
-
-    if (isCap) {
+    if (classification.kind === "installer") {
       desiredTargets.set(filePath, filePath);
       continue;
     }
 
-    if (isRoot) {
+    if (classification.kind === "canonical") {
+      if (!includeCanonicalRenames || !classification.canonicalBaseName) {
+        desiredTargets.set(filePath, filePath);
+        continue;
+      }
+      const target = path.posix.join(
+        path.posix.dirname(filePath),
+        classification.canonicalBaseName,
+      );
+      desiredTargets.set(filePath, target);
+      continue;
+    }
+
+    if (classification.location === "root") {
       if (!moveRootMarkdownToDocs) {
         desiredTargets.set(filePath, filePath);
         continue;
       }
 
-      if (datePrefix) {
-        desiredTargets.set(filePath, path.posix.join("docs", base));
+      if (classification.kind === "date-prefixed") {
+        const mode = getRenameCaseMode(filePath);
+        const targetBase = normalizeDatePrefixedDocs
+          ? applyRenameCase(base, mode)
+          : base;
+        desiredTargets.set(filePath, path.posix.join("docs", targetBase));
         continue;
       }
 
-      const meta = fileMeta.get(filePath);
-      const date = meta?.date;
-      if (!date) {
+      if (classification.kind === "regular") {
+        const meta = await getMeta(filePath);
+        const mode = getRenameCaseMode(filePath);
+        const slug = applyRenameCase(base, mode);
         desiredTargets.set(
           filePath,
-          path.posix.join("docs", slugifyBaseName(base)),
+          path.posix.join("docs", `${meta.date}-${slug}`),
         );
         continue;
       }
-
-      const slug = slugifyBaseName(base);
-      desiredTargets.set(filePath, path.posix.join("docs", `${date}-${slug}`));
-      continue;
     }
 
-    if (isInDocs) {
-      if (datePrefix) {
-        desiredTargets.set(filePath, filePath);
+    if (classification.location === "docs") {
+      if (classification.kind === "date-prefixed") {
+        if (!normalizeDatePrefixedDocs) {
+          desiredTargets.set(filePath, filePath);
+          continue;
+        }
+        const mode = getRenameCaseMode(filePath);
+        const targetBase = applyRenameCase(base, mode);
+        const targetPath = path.posix.join(
+          path.posix.dirname(filePath),
+          targetBase,
+        );
+        desiredTargets.set(filePath, targetPath);
         continue;
       }
 
-      if (!renameDocsToDatePrefix) {
-        desiredTargets.set(filePath, filePath);
-        continue;
-      }
+      if (classification.kind === "capitalized") {
+        if (!includeCanonicalRenames) {
+          desiredTargets.set(filePath, filePath);
+          continue;
+        }
 
-      const meta = fileMeta.get(filePath);
-      const date = meta?.date;
-      if (!date) {
+        const targetBase = applyRenameCase(base, "capitalized");
         desiredTargets.set(
           filePath,
-          path.posix.join(path.posix.dirname(filePath), slugifyBaseName(base)),
+          path.posix.join(path.posix.dirname(filePath), targetBase),
         );
         continue;
       }
 
-      const slug = slugifyBaseName(base);
+      if (classification.kind !== "regular" || !renameDocsToDatePrefix) {
+        desiredTargets.set(filePath, filePath);
+        continue;
+      }
+
+      const meta = await getMeta(filePath);
+      const mode = getRenameCaseMode(filePath);
+      const slug = applyRenameCase(base, mode);
       desiredTargets.set(
         filePath,
-        path.posix.join(path.posix.dirname(filePath), `${date}-${slug}`),
+        path.posix.join(path.posix.dirname(filePath), `${meta.date}-${slug}`),
       );
       continue;
     }
@@ -416,27 +499,30 @@ export async function planMigration(
   const frontmatterAdds: FrontmatterAction[] = [];
   if (addFrontmatter) {
     for (const filePath of candidates) {
-      const base = path.posix.basename(filePath);
       const targetPath = renameMap.get(filePath) ?? filePath;
       const targetBase = path.posix.basename(targetPath);
-      const datePrefix = isDatePrefixedBaseName(targetBase);
+      const datePrefix = extractDatePrefix(targetBase);
 
       if (!datePrefix) continue;
-      if (isCapitalizedDoc(base)) continue;
 
       const absTarget = path.join(repoRootAbs, ...targetPath.split("/"));
-      let content: string;
+      let content: string | null = null;
       try {
         content = await fs.readFile(absTarget, "utf8");
       } catch {
         const absOld = path.join(repoRootAbs, ...filePath.split("/"));
-        content = await fs.readFile(absOld, "utf8");
+        try {
+          content = await fs.readFile(absOld, "utf8");
+        } catch {
+          content = null;
+        }
       }
+      if (!content) continue;
 
       if (hasFrontmatter(content)) continue;
 
-      const meta = fileMeta.get(filePath);
-      const author = meta?.author ?? "Unknown <unknown@example.com>";
+      const meta = await getMeta(filePath);
+      const author = meta.author ?? "Unknown <unknown@example.com>";
       const date = datePrefix;
       const title = titleFromMarkdown(content) ?? titleFromSlug(targetBase);
       frontmatterAdds.push({
@@ -450,6 +536,38 @@ export async function planMigration(
   }
 
   const actions: MigrationAction[] = [...finalRenames, ...frontmatterAdds];
+  const referenceUpdates: ReferenceUpdateAction[] = [];
+  const referenceReplacements = buildReferenceReplacements(finalRenames);
+  const referenceRegex = buildReplacementRegex(referenceReplacements);
+
+  if (referenceRegex) {
+    const searchStrings = [...new Set(finalRenames.map((r) => r.from))];
+    const candidatesForScan = new Set<string>();
+    for (const filePath of await git.grepFilesFixed(repoRootAbs, searchStrings))
+      candidatesForScan.add(filePath);
+    for (const filePath of existingOnDisk) {
+      if (trackedSet.has(filePath)) continue;
+      candidatesForScan.add(filePath);
+    }
+
+    for (const filePath of candidatesForScan) {
+      const content = await readSmallTextFileForReferences(
+        repoRootAbs,
+        filePath,
+      );
+      if (!content) continue;
+      const matchCount = countMatches(content, referenceRegex);
+      if (matchCount === 0) continue;
+      const targetPath = renameMap.get(filePath) ?? filePath;
+      referenceUpdates.push({
+        type: "references",
+        path: targetPath,
+        matchCount,
+      });
+    }
+  }
+
+  actions.push(...referenceUpdates);
 
   return {
     repoRootAbs,
@@ -466,10 +584,6 @@ async function ensureParentDir(
 ): Promise<void> {
   const dir = path.dirname(path.join(repoRootAbs, ...relPath.split("/")));
   await fs.mkdir(dir, { recursive: true });
-}
-
-function gitMv(repoRootAbs: string, from: string, to: string): void {
-  runGit(["mv", "--", from, to], { cwd: repoRootAbs });
 }
 
 async function fsMv(
@@ -499,9 +613,13 @@ async function writeFrontmatter(
 async function applyRenames(
   plan: MigrationPlan,
   renames: RenameAction[],
+  git: GitClient,
 ): Promise<void> {
   const fromSet = new Set(renames.map((r) => r.from));
-  const needsTwoPhase = renames.some((r) => fromSet.has(r.to));
+  const fromSetLower = new Set([...fromSet].map((p) => p.toLowerCase()));
+  const needsTwoPhase = renames.some((r) =>
+    fromSetLower.has(r.to.toLowerCase()),
+  );
 
   const move = async (
     from: string,
@@ -509,7 +627,7 @@ async function applyRenames(
     tracked: boolean,
   ): Promise<void> => {
     await ensureParentDir(plan.repoRootAbs, to);
-    if (tracked) gitMv(plan.repoRootAbs, from, to);
+    if (tracked) await git.mv(plan.repoRootAbs, from, to);
     else await fsMv(plan.repoRootAbs, from, to);
   };
 
@@ -547,16 +665,21 @@ export async function runMigrationPlan(
   options?: {
     authorOverride?: string | null;
     authorRewrites?: Record<string, string> | null;
+    git?: GitClient;
   },
 ): Promise<void> {
+  const git = options?.git ?? createGitClient();
   const renames = plan.actions.filter(
     (a): a is RenameAction => a.type === "rename",
   );
   const frontmatters = plan.actions.filter(
     (a): a is FrontmatterAction => a.type === "frontmatter",
   );
+  const referenceUpdates = plan.actions.filter(
+    (a): a is ReferenceUpdateAction => a.type === "references",
+  );
 
-  if (renames.length > 0) await applyRenames(plan, renames);
+  if (renames.length > 0) await applyRenames(plan, renames, git);
 
   for (const action of frontmatters) {
     const author =
@@ -569,5 +692,29 @@ export async function runMigrationPlan(
       date: action.date,
     });
     await writeFrontmatter(plan.repoRootAbs, action.path, frontmatter);
+  }
+
+  if (referenceUpdates.length > 0) {
+    const replacements = buildReferenceReplacements(renames);
+    const regex = buildReplacementRegex(replacements);
+    if (regex) {
+      const replacementMap = new Map(
+        replacements.map((pair) => [pair.from, pair.to]),
+      );
+      for (const action of referenceUpdates) {
+        const content = await readSmallTextFileForReferences(
+          plan.repoRootAbs,
+          action.path,
+        );
+        if (!content) continue;
+        const next = content.replace(regex, (match) => {
+          return replacementMap.get(match) ?? match;
+        });
+        if (next !== content) {
+          const abs = path.join(plan.repoRootAbs, ...action.path.split("/"));
+          await fs.writeFile(abs, next, "utf8");
+        }
+      }
+    }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@simpledoc/simpledoc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SimpleDoc conventions and CLI tooling for Markdown documentation in codebases.",
   "license": "MIT",
   "author": "Onur Solmaz <info@solmaz.io>",

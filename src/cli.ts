@@ -1,3 +1,4 @@
+import path from "node:path";
 import process from "node:process";
 import { Command, CommanderError } from "commander";
 import {
@@ -7,6 +8,7 @@ import {
   isCancel,
   note,
   outro,
+  select,
   spinner,
   text,
 } from "@clack/prompts";
@@ -20,7 +22,13 @@ import {
   formatInstallActions,
   getInstallationStatus,
 } from "./installer.js";
-import type { FrontmatterAction } from "./migrator.js";
+import type { Option } from "@clack/prompts";
+import type {
+  FrontmatterAction,
+  ReferenceUpdateAction,
+  RenameAction,
+  RenameCaseMode,
+} from "./migrator.js";
 
 function abort(message = "Aborted."): void {
   cancel(message);
@@ -34,6 +42,23 @@ function limitLines(text: string, maxLines: number): string {
 }
 
 const MAX_STEP_FILE_PREVIEW_LINES = 20;
+
+function formatRenameSources(actions: RenameAction[]): string {
+  return actions.map((action) => `- ${action.from}`).join("\n");
+}
+
+function hasDatePrefix(baseName: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}-/.test(baseName);
+}
+
+function isCaseOnlyRename(action: RenameAction): boolean {
+  const fromDir = path.posix.dirname(action.from);
+  const toDir = path.posix.dirname(action.to);
+  if (fromDir !== toDir) return false;
+  const fromBase = path.posix.basename(action.from).toLowerCase();
+  const toBase = path.posix.basename(action.to).toLowerCase();
+  return fromBase === toBase;
+}
 
 function wrapLineWithIndent(
   line: string,
@@ -178,6 +203,47 @@ async function promptText(
   return value.trim() || defaultValue;
 }
 
+async function promptSelect<T extends string>(
+  message: string,
+  options: Option<T>[],
+  initialValue?: T,
+): Promise<T | null> {
+  const value = await select({
+    message,
+    options,
+    initialValue,
+  });
+  if (isCancel(value)) return null;
+  return value as T;
+}
+
+async function collectRenameCaseOverrides(
+  actions: RenameAction[],
+): Promise<Record<string, RenameCaseMode> | null> {
+  const overrides: Record<string, RenameCaseMode> = {};
+  for (const action of actions) {
+    const choice = await promptSelect<RenameCaseMode>(
+      `Filename case for ${action.from}`,
+      [
+        {
+          label: "Lowercase",
+          value: "lowercase",
+          hint: "Keeps/adds YYYY-MM-DD prefix (SimpleDoc default)",
+        },
+        {
+          label: "Capitalized",
+          value: "capitalized",
+          hint: "Capitalizes each dash-separated word",
+        },
+      ],
+      "lowercase",
+    );
+    if (choice === null) return null;
+    overrides[action.from] = choice;
+  }
+  return overrides;
+}
+
 type MigrateOptions = {
   dryRun: boolean;
   yes: boolean;
@@ -228,14 +294,30 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       }
     }
 
+    const caseRenamesAll = planAll.actions.filter(
+      (a): a is RenameAction => a.type === "rename" && isCaseOnlyRename(a),
+    );
     const rootMovesAll = planAll.actions.filter(
-      (a) => a.type === "rename" && !a.from.includes("/"),
+      (a): a is RenameAction =>
+        a.type === "rename" &&
+        !isCaseOnlyRename(a) &&
+        !a.from.includes("/") &&
+        a.to.startsWith("docs/"),
     );
     const docsRenamesAll = planAll.actions.filter(
-      (a) => a.type === "rename" && a.from.startsWith("docs/"),
+      (a): a is RenameAction =>
+        a.type === "rename" &&
+        !isCaseOnlyRename(a) &&
+        a.from.startsWith("docs/") &&
+        a.to.startsWith("docs/") &&
+        hasDatePrefix(path.posix.basename(a.to)) &&
+        !hasDatePrefix(path.posix.basename(a.from)),
     );
     const frontmatterAddsAll = planAll.actions.filter(
       (a): a is FrontmatterAction => a.type === "frontmatter",
+    );
+    const referenceUpdatesAll = planAll.actions.filter(
+      (a): a is ReferenceUpdateAction => a.type === "references",
     );
 
     const defaultPreviews: StepPreview[] = [];
@@ -258,6 +340,14 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         actionCount: docsRenamesAll.length,
       });
 
+    if (caseRenamesAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-canonical-capitalization",
+        title: "Normalize canonical doc filenames to capitalized form",
+        actionsText: formatActions(caseRenamesAll),
+        actionCount: caseRenamesAll.length,
+      });
+
     if (frontmatterAddsAll.length > 0)
       defaultPreviews.push({
         id: "migrate-frontmatter",
@@ -265,6 +355,14 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
           "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
         actionsText: formatActions(frontmatterAddsAll),
         actionCount: frontmatterAddsAll.length,
+      });
+
+    if (referenceUpdatesAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-references",
+        title: "Update references to renamed doc filenames",
+        actionsText: formatActions(referenceUpdatesAll),
+        actionCount: referenceUpdatesAll.length,
       });
 
     if (installActionsAll.length > 0) {
@@ -373,40 +471,82 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     let createAgentsFile = false;
     let addAttentionLine = false;
     let addHowToDoc = false;
+    let includeCaseRenames = true;
+    let includeReferenceUpdates = true;
+    const renameCaseOverrides: Record<string, RenameCaseMode> = {};
 
     if (rootMovesAll.length > 0) {
       noteWrapped(
-        `Markdown files detected in the repo root (will be moved into \`docs/\`):\n\n${limitLines(formatActions(rootMovesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Markdown files detected in the repo root (will be moved into \`docs/\`):\n\n${limitLines(formatRenameSources(rootMovesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Relocate root Markdown docs into \`docs/\` (${rootMovesAll.length})`,
       );
     }
-    const includeRootMoves =
-      rootMovesAll.length > 0
-        ? await promptConfirm(
-            `Move ${rootMovesAll.length} root Markdown file${rootMovesAll.length === 1 ? "" : "s"} into \`docs/\`?`,
-            true,
-          )
-        : false;
-    if (includeRootMoves === null) return abort("Operation cancelled.");
+    let includeRootMoves = false;
+    if (rootMovesAll.length > 0) {
+      const choice = await promptSelect<"yes" | "customize" | "no">(
+        `Move ${rootMovesAll.length} root Markdown file${rootMovesAll.length === 1 ? "" : "s"} into \`docs/\`?`,
+        [
+          { label: "Yes", value: "yes" },
+          { label: "Customize", value: "customize" },
+          { label: "No", value: "no" },
+        ],
+        "yes",
+      );
+      if (choice === null) return abort("Operation cancelled.");
+      if (choice === "yes") includeRootMoves = true;
+      if (choice === "customize") {
+        includeRootMoves = true;
+        const overrides = await collectRenameCaseOverrides(rootMovesAll);
+        if (overrides === null) return abort("Operation cancelled.");
+        Object.assign(renameCaseOverrides, overrides);
+      }
+    }
 
     if (docsRenamesAll.length > 0) {
       noteWrapped(
-        `Markdown files detected under \`docs/\` (will be renamed to \`YYYY-MM-DD-…\`):\n\n${limitLines(formatActions(docsRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Markdown files detected under \`docs/\` (will be renamed to \`YYYY-MM-DD-…\`):\n\n${limitLines(formatRenameSources(docsRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Date-prefix \`docs/\` Markdown filenames (${docsRenamesAll.length})`,
       );
     }
-    const includeDocsRenames =
-      docsRenamesAll.length > 0
-        ? await promptConfirm(
-            `Rename ${docsRenamesAll.length} \`docs/\` Markdown file${docsRenamesAll.length === 1 ? "" : "s"} to date-prefixed names?`,
-            true,
-          )
-        : false;
-    if (includeDocsRenames === null) return abort("Operation cancelled.");
+    let includeDocsRenames = false;
+    if (docsRenamesAll.length > 0) {
+      const choice = await promptSelect<"yes" | "customize" | "no">(
+        `Rename ${docsRenamesAll.length} \`docs/\` Markdown file${docsRenamesAll.length === 1 ? "" : "s"} to date-prefixed names?`,
+        [
+          { label: "Yes", value: "yes" },
+          { label: "Customize", value: "customize" },
+          { label: "No", value: "no" },
+        ],
+        "yes",
+      );
+      if (choice === null) return abort("Operation cancelled.");
+      if (choice === "yes") includeDocsRenames = true;
+      if (choice === "customize") {
+        includeDocsRenames = true;
+        const overrides = await collectRenameCaseOverrides(docsRenamesAll);
+        if (overrides === null) return abort("Operation cancelled.");
+        Object.assign(renameCaseOverrides, overrides);
+      }
+    }
+
+    if (caseRenamesAll.length > 0) {
+      noteWrapped(
+        `Canonical doc filenames detected (will be capitalized):\n\n${limitLines(formatActions(caseRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Proposed: Normalize canonical filenames (${caseRenamesAll.length})`,
+      );
+      const include = await promptConfirm(
+        `Capitalize ${caseRenamesAll.length} canonical doc filename${caseRenamesAll.length === 1 ? "" : "s"}?`,
+        true,
+      );
+      if (include === null) return abort("Operation cancelled.");
+      includeCaseRenames = include;
+    }
 
     const needsReplan =
       (rootMovesAll.length > 0 && !includeRootMoves) ||
-      (docsRenamesAll.length > 0 && !includeDocsRenames);
+      (docsRenamesAll.length > 0 && !includeDocsRenames) ||
+      includeCaseRenames === false ||
+      Object.keys(renameCaseOverrides).length > 0;
 
     let planWithFrontmatter = planAll;
     if (needsReplan) {
@@ -417,10 +557,15 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         moveRootMarkdownToDocs: Boolean(includeRootMoves),
         renameDocsToDatePrefix: Boolean(includeDocsRenames),
         addFrontmatter: true,
+        renameCaseOverrides,
+        includeCanonicalRenames: includeCaseRenames,
       });
     }
     const frontmatterAdds = planWithFrontmatter.actions.filter(
       (a): a is FrontmatterAction => a.type === "frontmatter",
+    );
+    const referenceUpdates = planWithFrontmatter.actions.filter(
+      (a): a is ReferenceUpdateAction => a.type === "references",
     );
 
     let includeFrontmatter = false;
@@ -437,6 +582,19 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       includeFrontmatter = include;
     }
 
+    if (referenceUpdates.length > 0) {
+      noteWrapped(
+        `Files referencing renamed docs (will be updated):\n\n${limitLines(formatActions(referenceUpdates), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Proposed: Update references to renamed docs (${referenceUpdates.length})`,
+      );
+      const include = await promptConfirm(
+        `Update references in ${referenceUpdates.length} file${referenceUpdates.length === 1 ? "" : "s"}?`,
+        true,
+      );
+      if (include === null) return abort("Operation cancelled.");
+      includeReferenceUpdates = include;
+    }
+
     let authorRewrites: Record<string, string> | null = null;
     if (includeFrontmatter && frontmatterAdds.length > 0 && !options.author) {
       const authorStats = getAuthorStats(frontmatterAdds);
@@ -446,13 +604,13 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       );
 
       const useGit = await promptConfirm(
-        `Use per-file authors from git history for inserted frontmatter? (No = you'll be prompted to replace each of the ${authorStats.length} detected authors)`,
+        "Use per-file git authors for inserted frontmatter?",
         true,
       );
       if (useGit === null) return abort("Operation cancelled.");
       if (!useGit) {
         noteWrapped(
-          "You'll now be prompted to replace each detected author. Press Enter to keep the original.",
+          `You'll now be prompted to replace each of the ${authorStats.length} detected authors. Press Enter to keep the original.`,
           "Author replacement",
         );
 
@@ -509,13 +667,25 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       addHowToDoc,
     });
 
-    const selectedMigrationActions = planWithFrontmatter.actions.filter(
+    let selectedMigrationActions = planWithFrontmatter.actions.filter(
       (a) => includeFrontmatter || a.type !== "frontmatter",
     );
+    if (!includeReferenceUpdates) {
+      selectedMigrationActions = selectedMigrationActions.filter(
+        (a) => a.type !== "references",
+      );
+    }
 
     const selectedSteps: StepPreview[] = [];
+    const selectedCaseRenames = selectedMigrationActions.filter(
+      (a): a is RenameAction => a.type === "rename" && isCaseOnlyRename(a),
+    );
     const selectedRootMoves = selectedMigrationActions.filter(
-      (a) => a.type === "rename" && !a.from.includes("/"),
+      (a): a is RenameAction =>
+        a.type === "rename" &&
+        !isCaseOnlyRename(a) &&
+        !a.from.includes("/") &&
+        a.to.startsWith("docs/"),
     );
     if (selectedRootMoves.length > 0)
       selectedSteps.push({
@@ -526,7 +696,13 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       });
 
     const selectedDocsRenames = selectedMigrationActions.filter(
-      (a) => a.type === "rename" && a.from.startsWith("docs/"),
+      (a): a is RenameAction =>
+        a.type === "rename" &&
+        !isCaseOnlyRename(a) &&
+        a.from.startsWith("docs/") &&
+        a.to.startsWith("docs/") &&
+        hasDatePrefix(path.posix.basename(a.to)) &&
+        !hasDatePrefix(path.posix.basename(a.from)),
     );
     if (selectedDocsRenames.length > 0)
       selectedSteps.push({
@@ -534,6 +710,14 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         title: "Date-prefix `docs/` Markdown filenames",
         actionsText: formatActions(selectedDocsRenames),
         actionCount: selectedDocsRenames.length,
+      });
+
+    if (selectedCaseRenames.length > 0)
+      selectedSteps.push({
+        id: "migrate-canonical-capitalization",
+        title: "Normalize canonical doc filenames to capitalized form",
+        actionsText: formatActions(selectedCaseRenames),
+        actionCount: selectedCaseRenames.length,
       });
 
     const selectedFrontmatters = selectedMigrationActions.filter(
@@ -545,6 +729,17 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         title: "Insert missing YAML frontmatter",
         actionsText: formatActions(selectedFrontmatters),
         actionCount: selectedFrontmatters.length,
+      });
+
+    const selectedReferenceUpdates = selectedMigrationActions.filter(
+      (a): a is ReferenceUpdateAction => a.type === "references",
+    );
+    if (selectedReferenceUpdates.length > 0)
+      selectedSteps.push({
+        id: "migrate-references",
+        title: "Update references to renamed docs",
+        actionsText: formatActions(selectedReferenceUpdates),
+        actionCount: selectedReferenceUpdates.length,
       });
 
     const selectedCreateAgents = selectedInstallActions.filter(
@@ -592,6 +787,9 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     const frontmatterCount = selectedMigrationActions.filter(
       (a) => a.type === "frontmatter",
     ).length;
+    const referenceCount = selectedMigrationActions.filter(
+      (a) => a.type === "references",
+    ).length;
 
     if (renameCount > 0) {
       summaryLines.push(
@@ -601,6 +799,11 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     if (frontmatterCount > 0) {
       summaryLines.push(
         `- Insert YAML frontmatter: ${frontmatterCount} file${frontmatterCount === 1 ? "" : "s"}`,
+      );
+    }
+    if (referenceCount > 0) {
+      summaryLines.push(
+        `- Update references to renamed docs: ${referenceCount} file${referenceCount === 1 ? "" : "s"}`,
       );
     }
 
@@ -623,6 +826,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     for (const action of selectedMigrationActions) {
       if (action.type === "rename") totalFiles.add(action.to);
       else if (action.type === "frontmatter") totalFiles.add(action.path);
+      else if (action.type === "references") totalFiles.add(action.path);
     }
     for (const action of selectedInstallActions) totalFiles.add(action.path);
     summaryLines.push(

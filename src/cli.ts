@@ -33,6 +33,8 @@ function limitLines(text: string, maxLines: number): string {
   return `${lines.slice(0, maxLines).join("\n")}\n- …and ${lines.length - maxLines} more`;
 }
 
+const MAX_STEP_FILE_PREVIEW_LINES = 20;
+
 function wrapLineWithIndent(
   line: string,
   width: number,
@@ -313,7 +315,10 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
           `\nStep ${stepNo}: ${step.title} (${step.actionCount})\n`,
         );
         const preview = step.actionsText.trim();
-        if (preview) process.stdout.write(`${limitLines(preview, 3)}\n`);
+        if (preview)
+          process.stdout.write(
+            `${limitLines(preview, MAX_STEP_FILE_PREVIEW_LINES)}\n`,
+          );
       }
     };
 
@@ -371,7 +376,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (rootMovesAll.length > 0) {
       noteWrapped(
-        "Moves lowercase/date-prefixed Markdown files in the repo root into `docs/` (date prefix is derived from first git commit date when missing).",
+        `Markdown files detected in the repo root (will be moved into \`docs/\`):\n\n${limitLines(formatActions(rootMovesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Relocate root Markdown docs into \`docs/\` (${rootMovesAll.length})`,
       );
     }
@@ -386,7 +391,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (docsRenamesAll.length > 0) {
       noteWrapped(
-        "Renames lowercase Markdown docs under `docs/` to `YYYY-MM-DD-…` using the file’s first git commit date.",
+        `Markdown files detected under \`docs/\` (will be renamed to \`YYYY-MM-DD-…\`):\n\n${limitLines(formatActions(docsRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Date-prefix \`docs/\` Markdown filenames (${docsRenamesAll.length})`,
       );
     }
@@ -421,7 +426,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     let includeFrontmatter = false;
     if (frontmatterAdds.length > 0) {
       noteWrapped(
-        "Inserts YAML frontmatter (`title`, `author`, `date`) at the top of each date-prefixed doc missing it. Title is derived from the first `#` heading (or filename).",
+        `Date-prefixed docs missing YAML frontmatter (will get \`title\`, \`author\`, \`date\`):\n\n${limitLines(formatActions(frontmatterAdds), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Insert missing YAML frontmatter (${frontmatterAdds.length})`,
       );
       const include = await promptConfirm(

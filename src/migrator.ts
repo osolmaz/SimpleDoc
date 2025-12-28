@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 import { classifyDoc } from "./doc-classifier.js";
+import { createGitClient, type FileMeta, type GitClient } from "./git.js";
 import type { RenameCaseMode } from "./naming.js";
 import {
   applyRenameCase,
@@ -11,14 +11,6 @@ import {
   isLowercaseDocBaseName,
   isMarkdownFile,
 } from "./naming.js";
-
-type FileMeta = {
-  dateIso: string;
-  date: string;
-  author: string;
-  name: string;
-  email: string;
-};
 
 export type { RenameCaseMode } from "./naming.js";
 
@@ -47,76 +39,6 @@ export type MigrationPlan = {
   dirty: boolean;
   actions: MigrationAction[];
 };
-
-function runGit(args: string[], { cwd }: { cwd: string }): string {
-  const res = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  if (res.error) throw res.error;
-  if (res.status !== 0) {
-    const msg = (res.stderr || res.stdout || "").trim();
-    throw new Error(
-      msg || `git ${args.join(" ")} failed with code ${res.status}`,
-    );
-  }
-  return res.stdout;
-}
-
-function runGitGrep(args: string[], { cwd }: { cwd: string }): string {
-  const res = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  if (res.error) throw res.error;
-  if (res.status === 0) return res.stdout;
-  if (res.status === 1) return "";
-
-  const msg = (res.stderr || res.stdout || "").trim();
-  throw new Error(
-    msg || `git ${args.join(" ")} failed with code ${res.status}`,
-  );
-}
-
-function gitGrepFiles(repoRootAbs: string, patterns: string[]): string[] {
-  if (patterns.length === 0) return [];
-  const out = new Set<string>();
-  const chunkSize = 64;
-
-  for (let i = 0; i < patterns.length; i += chunkSize) {
-    const chunk = patterns.slice(i, i + chunkSize);
-    const stdout = runGitGrep(
-      ["grep", "-l", "-F", "-z", ...chunk.flatMap((p) => ["-e", p]), "--"],
-      { cwd: repoRootAbs },
-    );
-    for (const filePath of stdout.split("\0").filter(Boolean))
-      out.add(filePath.trim());
-  }
-
-  return [...out];
-}
-
-function getRepoRoot(cwd: string): string {
-  const res = spawnSync("git", ["rev-parse", "--show-toplevel"], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  if (res.error) throw res.error;
-  if (res.status !== 0)
-    throw new Error("Not a git repository (or git is not available).");
-  return res.stdout.trim();
-}
-
-function isDirty(cwd: string): boolean {
-  const out = runGit(["status", "--porcelain"], { cwd });
-  return out.trim().length > 0;
-}
 
 function titleFromSlug(slug: string): string {
   const words = slug
@@ -282,19 +204,6 @@ function buildFrontmatter({
   ].join("\n");
 }
 
-function getCreationInfo(cwd: string, filePath: string): FileMeta | null {
-  const out = runGit(
-    ["log", "--follow", "--format=%aI\t%aN\t%aE", "--", filePath],
-    { cwd },
-  );
-  const lines = out.trim().split("\n").filter(Boolean);
-  if (lines.length === 0) return null;
-  const [dateIso, name, email] = lines[lines.length - 1]!.split("\t");
-  const date = dateIso!.slice(0, 10);
-  const author = email ? `${name} <${email}>` : name!;
-  return { dateIso: dateIso!, date, author, name: name!, email: email ?? "" };
-}
-
 async function getFileSystemInfo(
   repoRootAbs: string,
   filePath: string,
@@ -410,6 +319,7 @@ export type MigrationPlanOptions = {
   renameCaseOverrides?: Record<string, RenameCaseMode>;
   includeCanonicalRenames?: boolean;
   normalizeDatePrefixedDocs?: boolean;
+  git?: GitClient;
 };
 
 export async function planMigration(
@@ -422,20 +332,17 @@ export async function planMigration(
   const renameCaseOverrides = options.renameCaseOverrides ?? {};
   const includeCanonicalRenames = options.includeCanonicalRenames ?? true;
   const normalizeDatePrefixedDocs = options.normalizeDatePrefixedDocs ?? true;
+  const git = options.git ?? createGitClient();
 
   const getRenameCaseMode = (filePath: string): RenameCaseMode =>
     renameCaseOverrides[filePath] ?? "lowercase";
 
-  const repoRootAbs = getRepoRoot(cwd);
+  const repoRootAbs = await git.getRepoRoot(cwd);
   const repoRoot = toPosixRelPath(repoRootAbs);
 
-  const dirty = isDirty(repoRootAbs);
+  const dirty = await git.isDirty(repoRootAbs);
 
-  const tracked = runGit(["ls-files", "-z"], { cwd: repoRootAbs })
-    .split("\0")
-    .filter(Boolean)
-    .map((p) => p.trim());
-  const trackedSet = new Set(tracked);
+  const trackedSet = new Set(await git.listTrackedFiles(repoRootAbs));
 
   const rootFiles = await listRootFiles(repoRootAbs);
   const rootMarkdown = rootFiles.filter((f) => {
@@ -447,15 +354,7 @@ export async function planMigration(
     );
   });
 
-  const existingAll = runGit(
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    {
-      cwd: repoRootAbs,
-    },
-  )
-    .split("\0")
-    .filter(Boolean)
-    .map((p) => p.trim());
+  const existingAll = await git.listRepoFiles(repoRootAbs);
   const existingOnDisk: string[] = [];
   for (const filePath of existingAll) {
     if (await pathExists(repoRootAbs, filePath)) existingOnDisk.push(filePath);
@@ -473,7 +372,8 @@ export async function planMigration(
     if (cached) return cached;
 
     let info: FileMeta | null = null;
-    if (trackedSet.has(filePath)) info = getCreationInfo(repoRootAbs, filePath);
+    if (trackedSet.has(filePath))
+      info = await git.getCreationInfo(repoRootAbs, filePath);
     if (!info) info = await getFileSystemInfo(repoRootAbs, filePath);
     fileMeta.set(filePath, info);
     return info;
@@ -643,7 +543,7 @@ export async function planMigration(
   if (referenceRegex) {
     const searchStrings = [...new Set(finalRenames.map((r) => r.from))];
     const candidatesForScan = new Set<string>();
-    for (const filePath of gitGrepFiles(repoRootAbs, searchStrings))
+    for (const filePath of await git.grepFilesFixed(repoRootAbs, searchStrings))
       candidatesForScan.add(filePath);
     for (const filePath of existingOnDisk) {
       if (trackedSet.has(filePath)) continue;
@@ -686,10 +586,6 @@ async function ensureParentDir(
   await fs.mkdir(dir, { recursive: true });
 }
 
-function gitMv(repoRootAbs: string, from: string, to: string): void {
-  runGit(["mv", "--", from, to], { cwd: repoRootAbs });
-}
-
 async function fsMv(
   repoRootAbs: string,
   from: string,
@@ -717,6 +613,7 @@ async function writeFrontmatter(
 async function applyRenames(
   plan: MigrationPlan,
   renames: RenameAction[],
+  git: GitClient,
 ): Promise<void> {
   const fromSet = new Set(renames.map((r) => r.from));
   const fromSetLower = new Set([...fromSet].map((p) => p.toLowerCase()));
@@ -730,7 +627,7 @@ async function applyRenames(
     tracked: boolean,
   ): Promise<void> => {
     await ensureParentDir(plan.repoRootAbs, to);
-    if (tracked) gitMv(plan.repoRootAbs, from, to);
+    if (tracked) await git.mv(plan.repoRootAbs, from, to);
     else await fsMv(plan.repoRootAbs, from, to);
   };
 
@@ -768,8 +665,10 @@ export async function runMigrationPlan(
   options?: {
     authorOverride?: string | null;
     authorRewrites?: Record<string, string> | null;
+    git?: GitClient;
   },
 ): Promise<void> {
+  const git = options?.git ?? createGitClient();
   const renames = plan.actions.filter(
     (a): a is RenameAction => a.type === "rename",
   );
@@ -780,7 +679,7 @@ export async function runMigrationPlan(
     (a): a is ReferenceUpdateAction => a.type === "references",
   );
 
-  if (renames.length > 0) await applyRenames(plan, renames);
+  if (renames.length > 0) await applyRenames(plan, renames, git);
 
   for (const action of frontmatters) {
     const author =

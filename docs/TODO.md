@@ -8,3 +8,4 @@
 - [x] Harden renames on case-insensitive filesystems: force 2-phase renames when `from.toLowerCase() === to.toLowerCase()` (case-only renames like `readme.md -> README.md` can be flaky otherwise).
 - [x] Split `src/cli.ts` into step modules (`src/cli/steps/*.ts`) so each step owns: detect → preview → prompt → apply, and new steps don’t bloat one giant function.
 - [x] Tighten reference updates: add size limits/ignore rules (skip huge files), and optionally support more link patterns (`[text](docs/...)`, `<docs/...>`) without scanning everything blindly.
+- [x] Centralize git operations in `src/git.ts` (async `spawn`, concurrency limiter, injectable `GitClient`) and use it from `src/migrator.ts`.

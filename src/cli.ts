@@ -48,16 +48,25 @@ function formatRenameSources(actions: RenameAction[]): string {
 }
 
 function hasDatePrefix(baseName: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}-/.test(baseName);
+  return extractDatePrefix(baseName) !== null;
 }
 
-function isCaseOnlyRename(action: RenameAction): boolean {
-  const fromDir = path.posix.dirname(action.from);
-  const toDir = path.posix.dirname(action.to);
-  if (fromDir !== toDir) return false;
-  const fromBase = path.posix.basename(action.from).toLowerCase();
-  const toBase = path.posix.basename(action.to).toLowerCase();
-  return fromBase === toBase;
+function extractDatePrefix(baseName: string): string | null {
+  const name = baseName.replace(/\.(md|mdx)$/i, "");
+  const match = name.match(/^(\d{4}-\d{2}-\d{2})(?:$|[-_\s])/);
+  return match ? match[1] : null;
+}
+
+function isDatePrefixNormalizationRename(action: RenameAction): boolean {
+  if (!action.from.startsWith("docs/") || !action.to.startsWith("docs/"))
+    return false;
+  const fromBase = path.posix.basename(action.from);
+  const toBase = path.posix.basename(action.to);
+  const fromDate = extractDatePrefix(fromBase);
+  const toDate = extractDatePrefix(toBase);
+  if (!fromDate || !toDate) return false;
+  if (fromDate !== toDate) return false;
+  return fromBase !== toBase;
 }
 
 function wrapLineWithIndent(
@@ -228,12 +237,12 @@ async function collectRenameCaseOverrides(
         {
           label: "Lowercase",
           value: "lowercase",
-          hint: "Keeps/adds YYYY-MM-DD prefix (SimpleDoc default)",
+          hint: "Uses dashes (kebab-case) + keeps the YYYY-MM-DD prefix",
         },
         {
           label: "Capitalized",
           value: "capitalized",
-          hint: "Capitalizes each dash-separated word",
+          hint: "Uses underscores (SNAKE_CASE) + keeps the YYYY-MM-DD prefix",
         },
       ],
       "lowercase",
@@ -294,24 +303,29 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       }
     }
 
-    const caseRenamesAll = planAll.actions.filter(
-      (a): a is RenameAction => a.type === "rename" && isCaseOnlyRename(a),
+    const renameActionsAll = planAll.actions.filter(
+      (a): a is RenameAction => a.type === "rename",
     );
-    const rootMovesAll = planAll.actions.filter(
-      (a): a is RenameAction =>
-        a.type === "rename" &&
-        !isCaseOnlyRename(a) &&
-        !a.from.includes("/") &&
-        a.to.startsWith("docs/"),
+    const rootMovesAll = renameActionsAll.filter(
+      (a) => !a.from.includes("/") && a.to.startsWith("docs/"),
     );
-    const docsRenamesAll = planAll.actions.filter(
-      (a): a is RenameAction =>
-        a.type === "rename" &&
-        !isCaseOnlyRename(a) &&
+    const docsRenamesAll = renameActionsAll.filter(
+      (a) =>
         a.from.startsWith("docs/") &&
         a.to.startsWith("docs/") &&
         hasDatePrefix(path.posix.basename(a.to)) &&
         !hasDatePrefix(path.posix.basename(a.from)),
+    );
+    const datePrefixNormalizationsAll = renameActionsAll.filter((a) =>
+      isDatePrefixNormalizationRename(a),
+    );
+    const categorizedRenames = new Set<string>([
+      ...rootMovesAll.map((a) => a.from),
+      ...docsRenamesAll.map((a) => a.from),
+      ...datePrefixNormalizationsAll.map((a) => a.from),
+    ]);
+    const canonicalRenamesAll = renameActionsAll.filter(
+      (a) => !categorizedRenames.has(a.from),
     );
     const frontmatterAddsAll = planAll.actions.filter(
       (a): a is FrontmatterAction => a.type === "frontmatter",
@@ -335,17 +349,25 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       defaultPreviews.push({
         id: "migrate-docs-date-prefix",
         title:
-          "Rename `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
+          "Date-prefix `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
         actionsText: formatActions(docsRenamesAll),
         actionCount: docsRenamesAll.length,
       });
 
-    if (caseRenamesAll.length > 0)
+    if (datePrefixNormalizationsAll.length > 0)
+      defaultPreviews.push({
+        id: "migrate-docs-date-normalize",
+        title: "Normalize date-prefixed `docs/` filenames to SimpleDoc naming",
+        actionsText: formatActions(datePrefixNormalizationsAll),
+        actionCount: datePrefixNormalizationsAll.length,
+      });
+
+    if (canonicalRenamesAll.length > 0)
       defaultPreviews.push({
         id: "migrate-canonical-capitalization",
-        title: "Normalize canonical doc filenames to capitalized form",
-        actionsText: formatActions(caseRenamesAll),
-        actionCount: caseRenamesAll.length,
+        title: "Normalize capitalized/canonical Markdown filenames",
+        actionsText: formatActions(canonicalRenamesAll),
+        actionCount: canonicalRenamesAll.length,
       });
 
     if (frontmatterAddsAll.length > 0)
@@ -471,7 +493,8 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     let createAgentsFile = false;
     let addAttentionLine = false;
     let addHowToDoc = false;
-    let includeCaseRenames = true;
+    let includeDatePrefixNormalization = true;
+    let includeCanonicalRenames = true;
     let includeReferenceUpdates = true;
     const renameCaseOverrides: Record<string, RenameCaseMode> = {};
 
@@ -504,14 +527,14 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 
     if (docsRenamesAll.length > 0) {
       noteWrapped(
-        `Markdown files detected under \`docs/\` (will be renamed to \`YYYY-MM-DD-…\`):\n\n${limitLines(formatRenameSources(docsRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Markdown files detected under \`docs/\` that should be date-prefixed (will be renamed to lowercase \`YYYY-MM-DD-…\`):\n\n${limitLines(formatRenameSources(docsRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
         `Proposed: Date-prefix \`docs/\` Markdown filenames (${docsRenamesAll.length})`,
       );
     }
     let includeDocsRenames = false;
     if (docsRenamesAll.length > 0) {
       const choice = await promptSelect<"yes" | "customize" | "no">(
-        `Rename ${docsRenamesAll.length} \`docs/\` Markdown file${docsRenamesAll.length === 1 ? "" : "s"} to date-prefixed names?`,
+        `Date-prefix ${docsRenamesAll.length} \`docs/\` Markdown file${docsRenamesAll.length === 1 ? "" : "s"}?`,
         [
           { label: "Yes", value: "yes" },
           { label: "Customize", value: "customize" },
@@ -529,23 +552,37 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
       }
     }
 
-    if (caseRenamesAll.length > 0) {
+    if (datePrefixNormalizationsAll.length > 0) {
       noteWrapped(
-        `Canonical doc filenames detected (will be capitalized):\n\n${limitLines(formatActions(caseRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
-        `Proposed: Normalize canonical filenames (${caseRenamesAll.length})`,
+        `Date-prefixed docs detected with non-standard separators (will be normalized):\n\n${limitLines(formatActions(datePrefixNormalizationsAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Proposed: Normalize date-prefixed filenames (${datePrefixNormalizationsAll.length})`,
       );
       const include = await promptConfirm(
-        `Capitalize ${caseRenamesAll.length} canonical doc filename${caseRenamesAll.length === 1 ? "" : "s"}?`,
+        `Normalize ${datePrefixNormalizationsAll.length} date-prefixed filename${datePrefixNormalizationsAll.length === 1 ? "" : "s"} to SimpleDoc naming?`,
         true,
       );
       if (include === null) return abort("Operation cancelled.");
-      includeCaseRenames = include;
+      includeDatePrefixNormalization = include;
+    }
+
+    if (canonicalRenamesAll.length > 0) {
+      noteWrapped(
+        `Capitalized/canonical Markdown filenames detected (will be normalized with underscores, no date prefix):\n\n${limitLines(formatActions(canonicalRenamesAll), MAX_STEP_FILE_PREVIEW_LINES)}`,
+        `Proposed: Normalize capitalized/canonical filenames (${canonicalRenamesAll.length})`,
+      );
+      const include = await promptConfirm(
+        `Normalize ${canonicalRenamesAll.length} capitalized/canonical filename${canonicalRenamesAll.length === 1 ? "" : "s"} (underscores, no date prefix)?`,
+        true,
+      );
+      if (include === null) return abort("Operation cancelled.");
+      includeCanonicalRenames = include;
     }
 
     const needsReplan =
       (rootMovesAll.length > 0 && !includeRootMoves) ||
       (docsRenamesAll.length > 0 && !includeDocsRenames) ||
-      includeCaseRenames === false ||
+      includeDatePrefixNormalization === false ||
+      includeCanonicalRenames === false ||
       Object.keys(renameCaseOverrides).length > 0;
 
     let planWithFrontmatter = planAll;
@@ -558,7 +595,8 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         renameDocsToDatePrefix: Boolean(includeDocsRenames),
         addFrontmatter: true,
         renameCaseOverrides,
-        includeCanonicalRenames: includeCaseRenames,
+        includeCanonicalRenames,
+        normalizeDatePrefixedDocs: includeDatePrefixNormalization,
       });
     }
     const frontmatterAdds = planWithFrontmatter.actions.filter(
@@ -677,15 +715,11 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
     }
 
     const selectedSteps: StepPreview[] = [];
-    const selectedCaseRenames = selectedMigrationActions.filter(
-      (a): a is RenameAction => a.type === "rename" && isCaseOnlyRename(a),
+    const selectedRenameActions = selectedMigrationActions.filter(
+      (a): a is RenameAction => a.type === "rename",
     );
-    const selectedRootMoves = selectedMigrationActions.filter(
-      (a): a is RenameAction =>
-        a.type === "rename" &&
-        !isCaseOnlyRename(a) &&
-        !a.from.includes("/") &&
-        a.to.startsWith("docs/"),
+    const selectedRootMoves = selectedRenameActions.filter(
+      (a) => !a.from.includes("/") && a.to.startsWith("docs/"),
     );
     if (selectedRootMoves.length > 0)
       selectedSteps.push({
@@ -695,10 +729,8 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         actionCount: selectedRootMoves.length,
       });
 
-    const selectedDocsRenames = selectedMigrationActions.filter(
-      (a): a is RenameAction =>
-        a.type === "rename" &&
-        !isCaseOnlyRename(a) &&
+    const selectedDocsRenames = selectedRenameActions.filter(
+      (a) =>
         a.from.startsWith("docs/") &&
         a.to.startsWith("docs/") &&
         hasDatePrefix(path.posix.basename(a.to)) &&
@@ -712,12 +744,31 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
         actionCount: selectedDocsRenames.length,
       });
 
-    if (selectedCaseRenames.length > 0)
+    const selectedDatePrefixNormalizations = selectedRenameActions.filter((a) =>
+      isDatePrefixNormalizationRename(a),
+    );
+    if (selectedDatePrefixNormalizations.length > 0)
+      selectedSteps.push({
+        id: "migrate-docs-date-normalize",
+        title: "Normalize date-prefixed `docs/` filenames to SimpleDoc naming",
+        actionsText: formatActions(selectedDatePrefixNormalizations),
+        actionCount: selectedDatePrefixNormalizations.length,
+      });
+
+    const selectedCategorized = new Set<string>([
+      ...selectedRootMoves.map((a) => a.from),
+      ...selectedDocsRenames.map((a) => a.from),
+      ...selectedDatePrefixNormalizations.map((a) => a.from),
+    ]);
+    const selectedCanonicalRenames = selectedRenameActions.filter(
+      (a) => !selectedCategorized.has(a.from),
+    );
+    if (selectedCanonicalRenames.length > 0)
       selectedSteps.push({
         id: "migrate-canonical-capitalization",
-        title: "Normalize canonical doc filenames to capitalized form",
-        actionsText: formatActions(selectedCaseRenames),
-        actionCount: selectedCaseRenames.length,
+        title: "Normalize capitalized/canonical Markdown filenames",
+        actionsText: formatActions(selectedCanonicalRenames),
+        actionCount: selectedCanonicalRenames.length,
       });
 
     const selectedFrontmatters = selectedMigrationActions.filter(

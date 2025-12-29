@@ -234,6 +234,16 @@ function parsePathParts(relPath: string): {
   return { dir: dir === "." ? "" : dir, base, name, ext };
 }
 
+function stripDatePrefixFromBaseName(baseName: string): string {
+  const dot = baseName.lastIndexOf(".");
+  const ext = dot === -1 ? "" : baseName.slice(dot);
+  const stem = dot === -1 ? baseName : baseName.slice(0, dot);
+  const strippedStem = stem
+    .replace(/^\d{4}-\d{2}-\d{2}(?:[-_\s]+)?/, "")
+    .trim();
+  return `${strippedStem || "untitled"}${ext}`;
+}
+
 function uniqueTargetPath(
   preferredRelPath: string,
   occupied: Set<string>,
@@ -310,6 +320,7 @@ export type MigrationPlanOptions = {
   addFrontmatter?: boolean;
   renameCaseOverrides?: Record<string, RenameCaseMode>;
   forceDatePrefixPaths?: string[];
+  forceUndatedPaths?: string[];
   includeCanonicalRenames?: boolean;
   normalizeDatePrefixedDocs?: boolean;
   git?: GitClient;
@@ -324,6 +335,7 @@ export async function planMigration(
   const addFrontmatter = options.addFrontmatter ?? true;
   const renameCaseOverrides = options.renameCaseOverrides ?? {};
   const forceDatePrefixPaths = new Set(options.forceDatePrefixPaths ?? []);
+  const forceUndatedPaths = new Set(options.forceUndatedPaths ?? []);
   const includeCanonicalRenames = options.includeCanonicalRenames ?? true;
   const normalizeDatePrefixedDocs = options.normalizeDatePrefixedDocs ?? true;
   const git = options.git ?? createGitClient();
@@ -374,6 +386,13 @@ export async function planMigration(
     const base = classification.baseName;
     const desiredMode: RenameCaseMode =
       renameCaseOverrides[filePath] ?? classification.mode;
+    const forceDatePrefix = forceDatePrefixPaths.has(filePath);
+    const forceUndated = forceUndatedPaths.has(filePath);
+    if (forceDatePrefix && forceUndated) {
+      throw new Error(
+        `Conflicting per-file options: both forceDatePrefixPaths and forceUndatedPaths for ${filePath}`,
+      );
+    }
 
     if (classification.location === "root") {
       if (!moveRootMarkdownToDocs) {
@@ -404,8 +423,7 @@ export async function planMigration(
 
       if (
         classification.shouldDatePrefix ||
-        (classification.datePrefix === null &&
-          forceDatePrefixPaths.has(filePath))
+        (classification.datePrefix === null && forceDatePrefix)
       ) {
         const meta = await getMeta(filePath);
         const slug = applyRenameCase(base, desiredMode);
@@ -431,6 +449,18 @@ export async function planMigration(
     }
 
     if (classification.location === "docs") {
+      if (forceUndated) {
+        const baseNoDate = classification.datePrefix
+          ? stripDatePrefixFromBaseName(base)
+          : base;
+        const targetBase = applyRenameCase(baseNoDate, desiredMode);
+        desiredTargets.set(
+          filePath,
+          path.posix.join(path.posix.dirname(filePath), targetBase),
+        );
+        continue;
+      }
+
       if (classification.datePrefix) {
         if (!normalizeDatePrefixedDocs) {
           desiredTargets.set(filePath, filePath);
@@ -447,7 +477,7 @@ export async function planMigration(
 
       const shouldDatePrefix =
         (renameDocsToDatePrefix && classification.shouldDatePrefix) ||
-        forceDatePrefixPaths.has(filePath);
+        forceDatePrefix;
 
       if (shouldDatePrefix) {
         const meta = await getMeta(filePath);

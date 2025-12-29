@@ -294,6 +294,13 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     const includeLowercaseRenames = lowercaseSel.include;
     Object.assign(renameCaseOverrides, lowercaseSel.renameCaseOverrides);
 
+    const forceUndatedPaths: string[] = [];
+    for (const [filePath, mode] of Object.entries(
+      lowercaseSel.renameCaseOverrides,
+    )) {
+      if (mode === "capitalized") forceUndatedPaths.push(filePath);
+    }
+
     const capitalizedSel = await runCapitalizedNamingStep(
       capitalizedRenamesAll,
     );
@@ -326,6 +333,7 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
         addFrontmatter: true,
         renameCaseOverrides,
         forceDatePrefixPaths,
+        forceUndatedPaths,
         includeCanonicalRenames: Boolean(includeCapitalizedRenames),
       });
     }

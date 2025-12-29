@@ -139,6 +139,32 @@ test("plan: keeps YYYY-MM-DD prefix dashes even in capitalized mode", async (t) 
   ]);
 });
 
+test("plan: can force removing date prefix for date-prefixed docs when overridden to capitalized", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/2024-06-01-test-file.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add date-prefixed doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-06-10T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    renameCaseOverrides: { "docs/2024-06-01-test-file.md": "capitalized" },
+    forceUndatedPaths: ["docs/2024-06-01-test-file.md"],
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "docs/2024-06-01-test-file.md",
+      to: "docs/TEST_FILE.md",
+    },
+  ]);
+});
+
 test("plan: does not rename docs/HOW_TO_DOC.md", async (t) => {
   const repo = await makeTempRepo();
   t.after(repo.cleanup);

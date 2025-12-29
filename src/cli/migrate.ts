@@ -28,21 +28,19 @@ import {
   promptConfirm,
 } from "./ui.js";
 import {
-  detectDocsDatePrefixRenames,
-  runDocsDatePrefixStep,
-} from "./steps/docs-date-prefix.js";
-import { runCanonicalStep, detectCanonicalRenames } from "./steps/canonical.js";
+  detectLowercaseDocRenames,
+  runLowercaseNamingStep,
+} from "./steps/naming-lowercase.js";
 import {
-  detectDatePrefixNormalizations,
-  runDatePrefixNormalizeStep,
-} from "./steps/date-normalize.js";
+  detectCapitalizedDocRenames,
+  runCapitalizedNamingStep,
+} from "./steps/naming-capitalized.js";
 import { runFrontmatterStep } from "./steps/frontmatter.js";
 import { runInstallSteps } from "./steps/install.js";
 import { detectRootMoves, runRootMoveStep } from "./steps/root-move.js";
 import { runReferenceUpdatesStep } from "./steps/references.js";
 
 type StepPreview = {
-  id: string;
   title: string;
   actionsText: string;
   actionCount: number;
@@ -73,15 +71,12 @@ function buildDefaultPreviews(opts: {
     (a): a is RenameAction => a.type === "rename",
   );
   const rootMovesAll = detectRootMoves(renameActionsAll);
-  const docsRenamesAll = detectDocsDatePrefixRenames(renameActionsAll);
-  const datePrefixNormalizationsAll =
-    detectDatePrefixNormalizations(renameActionsAll);
+  const lowercaseRenamesAll = detectLowercaseDocRenames(renameActionsAll);
   const categorizedRenames = new Set<string>([
     ...rootMovesAll.map((a) => a.from),
-    ...docsRenamesAll.map((a) => a.from),
-    ...datePrefixNormalizationsAll.map((a) => a.from),
+    ...lowercaseRenamesAll.map((a) => a.from),
   ]);
-  const canonicalRenamesAll = detectCanonicalRenames({
+  const capitalizedRenamesAll = detectCapitalizedDocRenames({
     renameActions: renameActionsAll,
     categorizedSources: categorizedRenames,
   });
@@ -97,40 +92,28 @@ function buildDefaultPreviews(opts: {
 
   if (rootMovesAll.length > 0)
     defaultPreviews.push({
-      id: "migrate-root-move",
       title: "Relocate root Markdown docs into `docs/` (SimpleDoc convention)",
       actionsText: formatActions(rootMovesAll),
       actionCount: rootMovesAll.length,
     });
 
-  if (docsRenamesAll.length > 0)
+  if (lowercaseRenamesAll.length > 0)
     defaultPreviews.push({
-      id: "migrate-docs-date-prefix",
       title:
-        "Date-prefix `docs/` Markdown files to `YYYY-MM-DD-…` using first git commit date",
-      actionsText: formatActions(docsRenamesAll),
-      actionCount: docsRenamesAll.length,
+        "Fix dated/lowercase doc filenames (adds missing YYYY-MM-DD + normalizes separators)",
+      actionsText: formatActions(lowercaseRenamesAll),
+      actionCount: lowercaseRenamesAll.length,
     });
 
-  if (datePrefixNormalizationsAll.length > 0)
+  if (capitalizedRenamesAll.length > 0)
     defaultPreviews.push({
-      id: "migrate-docs-date-normalize",
-      title: "Normalize date-prefixed `docs/` filenames to SimpleDoc naming",
-      actionsText: formatActions(datePrefixNormalizationsAll),
-      actionCount: datePrefixNormalizationsAll.length,
-    });
-
-  if (canonicalRenamesAll.length > 0)
-    defaultPreviews.push({
-      id: "migrate-canonical-capitalization",
       title: "Normalize capitalized/canonical Markdown filenames",
-      actionsText: formatActions(canonicalRenamesAll),
-      actionCount: canonicalRenamesAll.length,
+      actionsText: formatActions(capitalizedRenamesAll),
+      actionCount: capitalizedRenamesAll.length,
     });
 
   if (frontmatterAddsAll.length > 0)
     defaultPreviews.push({
-      id: "migrate-frontmatter",
       title:
         "Insert missing YAML frontmatter (title/author/date) into date-prefixed docs",
       actionsText: formatActions(frontmatterAddsAll),
@@ -139,7 +122,6 @@ function buildDefaultPreviews(opts: {
 
   if (referenceUpdatesAll.length > 0)
     defaultPreviews.push({
-      id: "migrate-references",
       title: "Update references to renamed doc filenames",
       actionsText: formatActions(referenceUpdatesAll),
       actionCount: referenceUpdatesAll.length,
@@ -151,7 +133,6 @@ function buildDefaultPreviews(opts: {
     );
     if (createAgents.length > 0)
       defaultPreviews.push({
-        id: "install-create-agents",
         title: `Create \`${AGENTS_FILE}\``,
         actionsText: formatInstallActions(createAgents),
         actionCount: createAgents.length,
@@ -162,7 +143,6 @@ function buildDefaultPreviews(opts: {
     );
     if (addLine.length > 0)
       defaultPreviews.push({
-        id: "install-add-attention-line",
         title: `Add SimpleDoc agent reminder line to \`${AGENTS_FILE}\``,
         actionsText: formatInstallActions(addLine),
         actionCount: addLine.length,
@@ -173,7 +153,6 @@ function buildDefaultPreviews(opts: {
     );
     if (howToDoc.length > 0)
       defaultPreviews.push({
-        id: "install-how-to-doc",
         title: `Create \`${HOW_TO_DOC_FILE}\` template`,
         actionsText: formatInstallActions(howToDoc),
         actionCount: howToDoc.length,
@@ -293,15 +272,12 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     );
 
     const rootMovesAll = detectRootMoves(renameActionsAll);
-    const docsRenamesAll = detectDocsDatePrefixRenames(renameActionsAll);
-    const datePrefixNormalizationsAll =
-      detectDatePrefixNormalizations(renameActionsAll);
+    const lowercaseRenamesAll = detectLowercaseDocRenames(renameActionsAll);
     const categorizedRenames = new Set<string>([
       ...rootMovesAll.map((a) => a.from),
-      ...docsRenamesAll.map((a) => a.from),
-      ...datePrefixNormalizationsAll.map((a) => a.from),
+      ...lowercaseRenamesAll.map((a) => a.from),
     ]);
-    const canonicalRenamesAll = detectCanonicalRenames({
+    const capitalizedRenamesAll = detectCapitalizedDocRenames({
       renameActions: renameActionsAll,
       categorizedSources: categorizedRenames,
     });
@@ -313,25 +289,29 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     const includeRootMoves = rootMoveSel.include;
     Object.assign(renameCaseOverrides, rootMoveSel.renameCaseOverrides);
 
-    const docsDatePrefixSel = await runDocsDatePrefixStep(docsRenamesAll);
-    if (docsDatePrefixSel === null) return abort("Operation cancelled.");
-    const includeDocsRenames = docsDatePrefixSel.include;
-    Object.assign(renameCaseOverrides, docsDatePrefixSel.renameCaseOverrides);
+    const lowercaseSel = await runLowercaseNamingStep(lowercaseRenamesAll);
+    if (lowercaseSel === null) return abort("Operation cancelled.");
+    const includeLowercaseRenames = lowercaseSel.include;
+    Object.assign(renameCaseOverrides, lowercaseSel.renameCaseOverrides);
 
-    const includeDatePrefixNormalization = await runDatePrefixNormalizeStep(
-      datePrefixNormalizationsAll,
+    const capitalizedSel = await runCapitalizedNamingStep(
+      capitalizedRenamesAll,
     );
-    if (includeDatePrefixNormalization === null)
-      return abort("Operation cancelled.");
+    if (capitalizedSel === null) return abort("Operation cancelled.");
+    const includeCapitalizedRenames = capitalizedSel.include;
+    Object.assign(renameCaseOverrides, capitalizedSel.renameCaseOverrides);
 
-    const includeCanonicalRenames = await runCanonicalStep(canonicalRenamesAll);
-    if (includeCanonicalRenames === null) return abort("Operation cancelled.");
+    const forceDatePrefixPaths: string[] = [];
+    for (const [filePath, mode] of Object.entries(
+      capitalizedSel.renameCaseOverrides,
+    )) {
+      if (mode === "lowercase") forceDatePrefixPaths.push(filePath);
+    }
 
     const needsReplan =
       (rootMovesAll.length > 0 && !includeRootMoves) ||
-      (docsRenamesAll.length > 0 && !includeDocsRenames) ||
-      includeDatePrefixNormalization === false ||
-      includeCanonicalRenames === false ||
+      (lowercaseRenamesAll.length > 0 && !includeLowercaseRenames) ||
+      (capitalizedRenamesAll.length > 0 && !includeCapitalizedRenames) ||
       Object.keys(renameCaseOverrides).length > 0;
 
     let planWithFrontmatter = planAll;
@@ -341,11 +321,12 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
       );
       planWithFrontmatter = await planMigration({
         moveRootMarkdownToDocs: Boolean(includeRootMoves),
-        renameDocsToDatePrefix: Boolean(includeDocsRenames),
+        renameDocsToDatePrefix: Boolean(includeLowercaseRenames),
+        normalizeDatePrefixedDocs: Boolean(includeLowercaseRenames),
         addFrontmatter: true,
         renameCaseOverrides,
-        includeCanonicalRenames,
-        normalizeDatePrefixedDocs: includeDatePrefixNormalization,
+        forceDatePrefixPaths,
+        includeCanonicalRenames: Boolean(includeCapitalizedRenames),
       });
     }
 

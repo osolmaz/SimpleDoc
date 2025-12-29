@@ -42,7 +42,9 @@ export async function runRootMoveStep(actions: RenameAction[]): Promise<{
   if (choice === "no") return { include: false, renameCaseOverrides: {} };
   if (choice === "yes") return { include: true, renameCaseOverrides: {} };
 
-  const overrides = await collectRenameCaseOverrides(actions);
+  const overrides = await collectRenameCaseOverrides(actions, {
+    defaultMode: "lowercase",
+  });
   if (overrides === null) return null;
   return { include: true, renameCaseOverrides: overrides };
 }

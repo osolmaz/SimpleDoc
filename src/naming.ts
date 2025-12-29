@@ -6,7 +6,7 @@ export function isMarkdownFile(filePath: string): boolean {
   return MARKDOWN_EXT_RE.test(filePath);
 }
 
-export function splitMarkdownBaseName(baseName: string): {
+function splitMarkdownBaseName(baseName: string): {
   stem: string;
   ext: string;
 } {
@@ -41,11 +41,9 @@ const CANONICAL_CAPITALIZED_STEMS = new Set<string>([
   "principles",
   "relevant",
   "review_prompt",
-  "review-prompt",
   "jsend",
   "contributing",
   "code_of_conduct",
-  "code-of-conduct",
   "security",
   "support",
   "changelog",
@@ -62,12 +60,20 @@ const CANONICAL_CAPITALIZED_STEMS = new Set<string>([
   "copyright",
   "patents",
   "third_party_notices",
-  "third-party-notices",
   "faq",
   "roadmap",
 ]);
 
-export function normalizeLowercaseStem(stem: string): string {
+function normalizeCanonicalStem(stem: string): string {
+  return stem
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeLowercaseStem(stem: string): string {
   return stem
     .trim()
     .toLocaleLowerCase("en-US")
@@ -77,7 +83,7 @@ export function normalizeLowercaseStem(stem: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function normalizeCapitalizedStem(stem: string): string {
+function normalizeCapitalizedStem(stem: string): string {
   const cleaned = stem
     .trim()
     .toLocaleLowerCase("en-US")
@@ -92,8 +98,8 @@ export function getCanonicalBaseName(baseName: string): string | null {
   const { stem, ext } = splitMarkdownBaseName(baseName);
   if (!MARKDOWN_EXT_RE.test(baseName)) return null;
 
-  const lowerStem = stem.toLowerCase();
-  if (CANONICAL_CAPITALIZED_STEMS.has(lowerStem))
+  const canonicalStem = normalizeCanonicalStem(stem);
+  if (CANONICAL_CAPITALIZED_STEMS.has(canonicalStem))
     return `${normalizeCapitalizedStem(stem)}${ext}`;
   if (/^rfc[-_ ]?\d+/i.test(stem))
     return `${normalizeCapitalizedStem(stem)}${ext}`;
@@ -108,10 +114,7 @@ function parseDatePrefixedStem(
   return { date: m[1]!, rest: (m[2] ?? "").trim() };
 }
 
-export function normalizeBaseName(
-  baseName: string,
-  mode: RenameCaseMode,
-): string {
+function normalizeBaseName(baseName: string, mode: RenameCaseMode): string {
   const { stem, ext } = splitMarkdownBaseName(baseName);
 
   const dateParts = parseDatePrefixedStem(stem);

@@ -1,11 +1,8 @@
 import { spawn } from "node:child_process";
 
 export type FileMeta = {
-  dateIso: string;
   date: string;
   author: string;
-  name: string;
-  email: string;
 };
 
 export type GitClient = {
@@ -145,11 +142,8 @@ export function createGitClient(opts?: { maxConcurrency?: number }): GitClient {
       const date = dateIso.slice(0, 10);
       const author = email ? `${name} <${email}>` : (name ?? "");
       return {
-        dateIso,
         date,
         author: author || "Unknown <unknown@example.com>",
-        name: name || "Unknown",
-        email: email ?? "",
       };
     },
 

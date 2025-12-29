@@ -1,5 +1,7 @@
 import path from "node:path";
+
 import type { RenameAction, RenameCaseMode } from "../../migrator.js";
+import { formatActions } from "../../migrator.js";
 import { extractDatePrefix } from "../../naming.js";
 import {
   limitLines,
@@ -9,39 +11,34 @@ import {
 } from "../ui.js";
 import { collectRenameCaseOverrides } from "./rename-case-overrides.js";
 
-function formatRenameSources(actions: RenameAction[]): string {
-  return actions.map((action) => `- ${action.from}`).join("\n");
-}
-
 function hasDatePrefix(baseName: string): boolean {
   return extractDatePrefix(baseName) !== null;
 }
 
-export function detectDocsDatePrefixRenames(
+export function detectLowercaseDocRenames(
   renameActions: RenameAction[],
 ): RenameAction[] {
   return renameActions.filter(
     (a) =>
       a.from.startsWith("docs/") &&
       a.to.startsWith("docs/") &&
-      hasDatePrefix(path.posix.basename(a.to)) &&
-      !hasDatePrefix(path.posix.basename(a.from)),
+      hasDatePrefix(path.posix.basename(a.to)),
   );
 }
 
-export async function runDocsDatePrefixStep(actions: RenameAction[]): Promise<{
+export async function runLowercaseNamingStep(actions: RenameAction[]): Promise<{
   include: boolean;
   renameCaseOverrides: Record<string, RenameCaseMode>;
 } | null> {
   if (actions.length === 0) return { include: false, renameCaseOverrides: {} };
 
   noteWrapped(
-    `Markdown files detected under \`docs/\` that should be date-prefixed (will be renamed to lowercase \`YYYY-MM-DD-…\`):\n\n${limitLines(formatRenameSources(actions), MAX_STEP_FILE_PREVIEW_LINES)}`,
-    `Proposed: Date-prefix \`docs/\` Markdown filenames (${actions.length})`,
+    `Docs that will be renamed to SimpleDoc dated naming (adds missing YYYY-MM-DD and normalizes separators):\n\n${limitLines(formatActions(actions), MAX_STEP_FILE_PREVIEW_LINES)}`,
+    `Proposed: Fix dated/lowercase doc filenames (${actions.length})`,
   );
 
   const choice = await promptSelect<"yes" | "customize" | "no">(
-    `Date-prefix ${actions.length} \`docs/\` Markdown file${actions.length === 1 ? "" : "s"}?`,
+    `Apply dated/lowercase naming to ${actions.length} doc filename${actions.length === 1 ? "" : "s"}?`,
     [
       { label: "Yes", value: "yes" },
       { label: "Customize", value: "customize" },
@@ -54,7 +51,10 @@ export async function runDocsDatePrefixStep(actions: RenameAction[]): Promise<{
   if (choice === "no") return { include: false, renameCaseOverrides: {} };
   if (choice === "yes") return { include: true, renameCaseOverrides: {} };
 
-  const overrides = await collectRenameCaseOverrides(actions);
+  const overrides = await collectRenameCaseOverrides(actions, {
+    defaultMode: "lowercase",
+  });
   if (overrides === null) return null;
+
   return { include: true, renameCaseOverrides: overrides };
 }

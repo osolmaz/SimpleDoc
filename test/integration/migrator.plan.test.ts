@@ -26,6 +26,50 @@ test("plan: normalizes capitalized docs under docs/ (no date prefix)", async (t)
   ]);
 });
 
+test("plan: can override capitalized docs to lowercase (no date prefix)", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/TEST-FILE.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add TEST-FILE",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    renameCaseOverrides: { "docs/TEST-FILE.md": "lowercase" },
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "docs/TEST-FILE.md",
+      to: "docs/test-file.md",
+    },
+  ]);
+});
+
+test("plan: can skip capitalized/canonical renames", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/TEST-FILE.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add TEST-FILE",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    includeCanonicalRenames: false,
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, []);
+});
+
 test("plan: date-prefixes mixed-case docs under docs/", async (t) => {
   const repo = await makeTempRepo();
   t.after(repo.cleanup);
@@ -91,6 +135,32 @@ test("plan: keeps YYYY-MM-DD prefix dashes even in capitalized mode", async (t) 
       type: "rename",
       from: "docs/2024-06-01_test-file.md",
       to: "docs/2024-06-01-TEST_FILE.md",
+    },
+  ]);
+});
+
+test("plan: can force removing date prefix for date-prefixed docs when overridden to capitalized", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/2024-06-01-test-file.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add date-prefixed doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-06-10T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    renameCaseOverrides: { "docs/2024-06-01-test-file.md": "capitalized" },
+    forceUndatedPaths: ["docs/2024-06-01-test-file.md"],
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "docs/2024-06-01-test-file.md",
+      to: "docs/TEST_FILE.md",
     },
   ]);
 });
@@ -163,6 +233,58 @@ test("plan: treats RFC-* docs as canonical (no date prefix)", async (t) => {
       type: "rename",
       from: "docs/RFC-6902-JSON-Patch.md",
       to: "docs/RFC_6902_JSON_PATCH.md",
+    },
+  ]);
+});
+
+test("plan: can override RFC canonical docs to lowercase (no date prefix)", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/RFC-6902-JSON-Patch.md", "# RFC\n");
+  commitAll(repo.dir, {
+    message: "Add RFC doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-08-01T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    renameCaseOverrides: { "docs/RFC-6902-JSON-Patch.md": "lowercase" },
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "docs/RFC-6902-JSON-Patch.md",
+      to: "docs/rfc-6902-json-patch.md",
+    },
+  ]);
+});
+
+test("plan: can force date-prefixing capitalized docs when overridden to lowercase", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/TEST-FILE.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add TEST-FILE",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-08-01T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    renameDocsToDatePrefix: false,
+    renameCaseOverrides: { "docs/TEST-FILE.md": "lowercase" },
+    forceDatePrefixPaths: ["docs/TEST-FILE.md"],
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "docs/TEST-FILE.md",
+      to: "docs/2024-08-01-test-file.md",
     },
   ]);
 });

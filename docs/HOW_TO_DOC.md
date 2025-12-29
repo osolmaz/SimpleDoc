@@ -75,7 +75,6 @@ SimpleDoc Guidelines:
 
 - Keep the `date` value in sync with the filename prefix.
 - Use a real contact in `author` (`Name <email>`).
-- The `author` value **must** match the active user's entry in `.localuser`. Read that file and copy the exact `Name` and `Email` (e.g., `Author: John Doe <john@example.com>`).
 - Choose a concise, action-oriented `title`.
 - Populate `tags` when it improves discoverability; omit the line if not needed.
 

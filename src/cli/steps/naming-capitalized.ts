@@ -1,35 +1,35 @@
 import type { RenameAction, RenameCaseMode } from "../../migrator.js";
+import { formatActions } from "../../migrator.js";
 import {
-  noteWrapped,
-  promptSelect,
   limitLines,
   MAX_STEP_FILE_PREVIEW_LINES,
+  noteWrapped,
+  promptSelect,
 } from "../ui.js";
 import { collectRenameCaseOverrides } from "./rename-case-overrides.js";
 
-function formatRenameSources(actions: RenameAction[]): string {
-  return actions.map((action) => `- ${action.from}`).join("\n");
+export function detectCapitalizedDocRenames(opts: {
+  renameActions: RenameAction[];
+  categorizedSources: Set<string>;
+}): RenameAction[] {
+  return opts.renameActions.filter((a) => !opts.categorizedSources.has(a.from));
 }
 
-export function detectRootMoves(renameActions: RenameAction[]): RenameAction[] {
-  return renameActions.filter(
-    (a) => !a.from.includes("/") && a.to.startsWith("docs/"),
-  );
-}
-
-export async function runRootMoveStep(actions: RenameAction[]): Promise<{
+export async function runCapitalizedNamingStep(
+  actions: RenameAction[],
+): Promise<{
   include: boolean;
   renameCaseOverrides: Record<string, RenameCaseMode>;
 } | null> {
   if (actions.length === 0) return { include: false, renameCaseOverrides: {} };
 
   noteWrapped(
-    `Markdown files detected in the repo root (will be moved into \`docs/\`):\n\n${limitLines(formatRenameSources(actions), MAX_STEP_FILE_PREVIEW_LINES)}`,
-    `Proposed: Relocate root Markdown docs into \`docs/\` (${actions.length})`,
+    `Capitalized/canonical Markdown filenames detected (will be normalized with underscores, no date prefix):\n\n${limitLines(formatActions(actions), MAX_STEP_FILE_PREVIEW_LINES)}`,
+    `Proposed: Fix capitalized/canonical doc filenames (${actions.length})`,
   );
 
   const choice = await promptSelect<"yes" | "customize" | "no">(
-    `Move ${actions.length} root Markdown file${actions.length === 1 ? "" : "s"} into \`docs/\`?`,
+    `Apply capitalized/canonical naming to ${actions.length} filename${actions.length === 1 ? "" : "s"}?`,
     [
       { label: "Yes", value: "yes" },
       { label: "Customize", value: "customize" },
@@ -43,8 +43,9 @@ export async function runRootMoveStep(actions: RenameAction[]): Promise<{
   if (choice === "yes") return { include: true, renameCaseOverrides: {} };
 
   const overrides = await collectRenameCaseOverrides(actions, {
-    defaultMode: "lowercase",
+    defaultMode: "capitalized",
   });
   if (overrides === null) return null;
+
   return { include: true, renameCaseOverrides: overrides };
 }

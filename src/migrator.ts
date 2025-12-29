@@ -34,7 +34,6 @@ export type MigrationAction =
 
 export type MigrationPlan = {
   repoRootAbs: string;
-  repoRoot: string;
   trackedSet: Set<string>;
   dirty: boolean;
   actions: MigrationAction[];
@@ -216,11 +215,8 @@ async function getFileSystemInfo(
       : stat.mtime.toISOString();
   const date = dateIso.slice(0, 10);
   return {
-    dateIso,
     date,
     author: "Unknown <unknown@example.com>",
-    name: "Unknown",
-    email: "",
   };
 }
 
@@ -236,6 +232,16 @@ function parsePathParts(relPath: string): {
   const ext = dot === -1 ? "" : base.slice(dot);
   const name = dot === -1 ? base : base.slice(0, dot);
   return { dir: dir === "." ? "" : dir, base, name, ext };
+}
+
+function stripDatePrefixFromBaseName(baseName: string): string {
+  const dot = baseName.lastIndexOf(".");
+  const ext = dot === -1 ? "" : baseName.slice(dot);
+  const stem = dot === -1 ? baseName : baseName.slice(0, dot);
+  const strippedStem = stem
+    .replace(/^\d{4}-\d{2}-\d{2}(?:[-_\s]+)?/, "")
+    .trim();
+  return `${strippedStem || "untitled"}${ext}`;
 }
 
 function uniqueTargetPath(
@@ -290,10 +296,6 @@ async function listRootFiles(repoRootAbs: string): Promise<string[]> {
     .filter((name) => !name.startsWith("."));
 }
 
-function toPosixRelPath(p: string): string {
-  return p.split(path.sep).join(path.posix.sep);
-}
-
 export function formatActions(actions: MigrationAction[]): string {
   const lines: string[] = [];
   for (const action of actions) {
@@ -317,6 +319,8 @@ export type MigrationPlanOptions = {
   renameDocsToDatePrefix?: boolean;
   addFrontmatter?: boolean;
   renameCaseOverrides?: Record<string, RenameCaseMode>;
+  forceDatePrefixPaths?: string[];
+  forceUndatedPaths?: string[];
   includeCanonicalRenames?: boolean;
   normalizeDatePrefixedDocs?: boolean;
   git?: GitClient;
@@ -330,16 +334,13 @@ export async function planMigration(
   const renameDocsToDatePrefix = options.renameDocsToDatePrefix ?? true;
   const addFrontmatter = options.addFrontmatter ?? true;
   const renameCaseOverrides = options.renameCaseOverrides ?? {};
+  const forceDatePrefixPaths = new Set(options.forceDatePrefixPaths ?? []);
+  const forceUndatedPaths = new Set(options.forceUndatedPaths ?? []);
   const includeCanonicalRenames = options.includeCanonicalRenames ?? true;
   const normalizeDatePrefixedDocs = options.normalizeDatePrefixedDocs ?? true;
   const git = options.git ?? createGitClient();
 
-  const getRenameCaseMode = (filePath: string): RenameCaseMode =>
-    renameCaseOverrides[filePath] ?? "lowercase";
-
   const repoRootAbs = await git.getRepoRoot(cwd);
-  const repoRoot = toPosixRelPath(repoRootAbs);
-
   const dirty = await git.isDirty(repoRootAbs);
 
   const trackedSet = new Set(await git.listTrackedFiles(repoRootAbs));
@@ -383,60 +384,89 @@ export async function planMigration(
   for (const filePath of candidates) {
     const classification = classifyDoc(filePath);
     const base = classification.baseName;
-
-    if (classification.kind === "installer") {
-      desiredTargets.set(filePath, filePath);
-      continue;
-    }
-
-    if (classification.kind === "canonical") {
-      if (!includeCanonicalRenames || !classification.canonicalBaseName) {
-        desiredTargets.set(filePath, filePath);
-        continue;
-      }
-      const target = path.posix.join(
-        path.posix.dirname(filePath),
-        classification.canonicalBaseName,
+    const desiredMode: RenameCaseMode =
+      renameCaseOverrides[filePath] ?? classification.mode;
+    const forceDatePrefix = forceDatePrefixPaths.has(filePath);
+    const forceUndated = forceUndatedPaths.has(filePath);
+    if (forceDatePrefix && forceUndated) {
+      throw new Error(
+        `Conflicting per-file options: both forceDatePrefixPaths and forceUndatedPaths for ${filePath}`,
       );
-      desiredTargets.set(filePath, target);
-      continue;
     }
 
     if (classification.location === "root") {
       if (!moveRootMarkdownToDocs) {
+        if (classification.mode === "capitalized") {
+          if (!includeCanonicalRenames) {
+            desiredTargets.set(filePath, filePath);
+            continue;
+          }
+          const targetBase = applyRenameCase(base, desiredMode);
+          desiredTargets.set(
+            filePath,
+            path.posix.join(path.posix.dirname(filePath), targetBase),
+          );
+          continue;
+        }
+
         desiredTargets.set(filePath, filePath);
         continue;
       }
 
-      if (classification.kind === "date-prefixed") {
-        const mode = getRenameCaseMode(filePath);
+      if (classification.datePrefix) {
         const targetBase = normalizeDatePrefixedDocs
-          ? applyRenameCase(base, mode)
+          ? applyRenameCase(base, desiredMode)
           : base;
         desiredTargets.set(filePath, path.posix.join("docs", targetBase));
         continue;
       }
 
-      if (classification.kind === "regular") {
+      if (
+        classification.shouldDatePrefix ||
+        (classification.datePrefix === null && forceDatePrefix)
+      ) {
         const meta = await getMeta(filePath);
-        const mode = getRenameCaseMode(filePath);
-        const slug = applyRenameCase(base, mode);
+        const slug = applyRenameCase(base, desiredMode);
         desiredTargets.set(
           filePath,
           path.posix.join("docs", `${meta.date}-${slug}`),
         );
         continue;
       }
+
+      if (classification.mode === "capitalized") {
+        if (!includeCanonicalRenames) {
+          desiredTargets.set(filePath, filePath);
+          continue;
+        }
+        const targetBase = applyRenameCase(base, desiredMode);
+        desiredTargets.set(
+          filePath,
+          path.posix.join(path.posix.dirname(filePath), targetBase),
+        );
+        continue;
+      }
     }
 
     if (classification.location === "docs") {
-      if (classification.kind === "date-prefixed") {
+      if (forceUndated) {
+        const baseNoDate = classification.datePrefix
+          ? stripDatePrefixFromBaseName(base)
+          : base;
+        const targetBase = applyRenameCase(baseNoDate, desiredMode);
+        desiredTargets.set(
+          filePath,
+          path.posix.join(path.posix.dirname(filePath), targetBase),
+        );
+        continue;
+      }
+
+      if (classification.datePrefix) {
         if (!normalizeDatePrefixedDocs) {
           desiredTargets.set(filePath, filePath);
           continue;
         }
-        const mode = getRenameCaseMode(filePath);
-        const targetBase = applyRenameCase(base, mode);
+        const targetBase = applyRenameCase(base, desiredMode);
         const targetPath = path.posix.join(
           path.posix.dirname(filePath),
           targetBase,
@@ -445,13 +475,27 @@ export async function planMigration(
         continue;
       }
 
-      if (classification.kind === "capitalized") {
+      const shouldDatePrefix =
+        (renameDocsToDatePrefix && classification.shouldDatePrefix) ||
+        forceDatePrefix;
+
+      if (shouldDatePrefix) {
+        const meta = await getMeta(filePath);
+        const slug = applyRenameCase(base, desiredMode);
+        desiredTargets.set(
+          filePath,
+          path.posix.join(path.posix.dirname(filePath), `${meta.date}-${slug}`),
+        );
+        continue;
+      }
+
+      if (classification.mode === "capitalized") {
         if (!includeCanonicalRenames) {
           desiredTargets.set(filePath, filePath);
           continue;
         }
 
-        const targetBase = applyRenameCase(base, "capitalized");
+        const targetBase = applyRenameCase(base, desiredMode);
         desiredTargets.set(
           filePath,
           path.posix.join(path.posix.dirname(filePath), targetBase),
@@ -459,18 +503,7 @@ export async function planMigration(
         continue;
       }
 
-      if (classification.kind !== "regular" || !renameDocsToDatePrefix) {
-        desiredTargets.set(filePath, filePath);
-        continue;
-      }
-
-      const meta = await getMeta(filePath);
-      const mode = getRenameCaseMode(filePath);
-      const slug = applyRenameCase(base, mode);
-      desiredTargets.set(
-        filePath,
-        path.posix.join(path.posix.dirname(filePath), `${meta.date}-${slug}`),
-      );
+      desiredTargets.set(filePath, filePath);
       continue;
     }
 
@@ -571,7 +604,6 @@ export async function planMigration(
 
   return {
     repoRootAbs,
-    repoRoot,
     trackedSet,
     dirty,
     actions,

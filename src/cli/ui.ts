@@ -128,3 +128,33 @@ export async function promptSelect<T extends string>(
   if (isCancel(value)) return null;
   return value as T;
 }
+
+export function createScanProgressBarReporter(
+  enabled: boolean,
+): (info: { phase: "scan"; current: number; total: number }) => void {
+  if (!enabled) return () => {};
+  let lastLineLength = 0;
+  let lastTick = 0;
+  return (info) => {
+    if (info.phase !== "scan") return;
+    const now = Date.now();
+    if (now - lastTick < 80 && info.current !== info.total) return;
+    lastTick = now;
+
+    const cols = process.stdout.columns ?? 80;
+    const barWidth = Math.max(10, Math.min(40, cols - 35));
+    const ratio = info.total === 0 ? 1 : info.current / info.total;
+    const filled = Math.min(barWidth, Math.round(barWidth * ratio));
+    const empty = Math.max(0, barWidth - filled);
+    const bar = `${"#".repeat(filled)}${"-".repeat(empty)}`;
+    const percent = Math.min(100, Math.round(ratio * 100));
+    const line = `Scanning repo files: [${bar}] ${info.current}/${info.total} ${percent}%`;
+    const padded =
+      line.length >= lastLineLength
+        ? line
+        : `${line}${" ".repeat(lastLineLength - line.length)}`;
+    lastLineLength = padded.length;
+    process.stderr.write(`\r${padded}`);
+    if (info.current === info.total) process.stderr.write("\n");
+  };
+}

@@ -7,7 +7,11 @@ import {
   type ReferenceUpdateAction,
   type RenameAction,
 } from "../migrator.js";
-import { MAX_STEP_FILE_PREVIEW_LINES, limitLines } from "./ui.js";
+import {
+  MAX_STEP_FILE_PREVIEW_LINES,
+  createScanProgressBarReporter,
+  limitLines,
+} from "./ui.js";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -16,7 +20,10 @@ function getErrorMessage(err: unknown): string {
 
 export async function runCheck(): Promise<void> {
   try {
-    const plan = await planMigration();
+    const scanProgress = createScanProgressBarReporter(
+      Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    );
+    const plan = await planMigration({ onProgress: scanProgress });
 
     const renames = plan.actions.filter(
       (a): a is RenameAction => a.type === "rename",
@@ -31,8 +38,7 @@ export async function runCheck(): Promise<void> {
     if (
       renames.length === 0 &&
       frontmatters.length === 0 &&
-      references.length === 0 &&
-      true
+      references.length === 0
     ) {
       process.stdout.write("OK: repo matches SimpleDoc conventions.\n");
       return;

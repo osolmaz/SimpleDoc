@@ -23,6 +23,7 @@ import {
 import type { InstallAction } from "../installer.js";
 import {
   MAX_STEP_FILE_PREVIEW_LINES,
+  createScanProgressBarReporter,
   limitLines,
   noteWrapped,
   promptConfirm,
@@ -182,7 +183,10 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     process.stderr.write(
       "Planning changes (this may take a while on large repos)...\n",
     );
-    const planAll = await planMigration();
+    const scanProgress = createScanProgressBarReporter(
+      Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    );
+    const planAll = await planMigration({ onProgress: scanProgress });
     const installStatus = await getInstallationStatus(planAll.repoRootAbs);
 
     const installActionsAll = await buildInstallationActions({

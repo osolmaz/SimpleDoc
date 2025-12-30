@@ -34,4 +34,5 @@ jobs:
       - run: npm run lint
       - run: npm run release:ci -- --increment ${{ inputs.increment }}
         env:
+          DEBUG: release-it:config
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

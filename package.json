@@ -31,6 +31,8 @@
     "lint": "eslint . --max-warnings 0",
     "prepack": "npm run build",
     "prepare": "husky",
+    "release": "release-it",
+    "release:ci": "release-it --ci",
     "migrate": "npm run -s build && node ./dist/bin/simpledoc.js migrate",
     "migrate:dry": "npm run -s build && node ./dist/bin/simpledoc.js migrate --dry-run",
     "test": "npm run -s build:test && node --test dist-test/test/integration/*.test.js"
@@ -55,6 +57,7 @@
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
+    "release-it": "^17.1.1",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0"
   },

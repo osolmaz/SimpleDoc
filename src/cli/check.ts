@@ -7,13 +7,6 @@ import {
   type ReferenceUpdateAction,
   type RenameAction,
 } from "../migrator.js";
-import {
-  AGENTS_FILE,
-  HOW_TO_DOC_FILE,
-  buildInstallationActions,
-  formatInstallActions,
-  getInstallationStatus,
-} from "../installer.js";
 import { MAX_STEP_FILE_PREVIEW_LINES, limitLines } from "./ui.js";
 
 function getErrorMessage(err: unknown): string {
@@ -24,14 +17,6 @@ function getErrorMessage(err: unknown): string {
 export async function runCheck(): Promise<void> {
   try {
     const plan = await planMigration();
-    const installStatus = await getInstallationStatus(plan.repoRootAbs);
-
-    const installActions = await buildInstallationActions({
-      createAgentsFile: !installStatus.agentsExists,
-      addAttentionLine:
-        installStatus.agentsExists && !installStatus.agentsHasAttentionLine,
-      addHowToDoc: !installStatus.howToDocExists,
-    });
 
     const renames = plan.actions.filter(
       (a): a is RenameAction => a.type === "rename",
@@ -47,7 +32,7 @@ export async function runCheck(): Promise<void> {
       renames.length === 0 &&
       frontmatters.length === 0 &&
       references.length === 0 &&
-      installActions.length === 0
+      true
     ) {
       process.stdout.write("OK: repo matches SimpleDoc conventions.\n");
       return;
@@ -69,40 +54,14 @@ export async function runCheck(): Promise<void> {
         `- Update references to renamed docs: ${references.length} file${references.length === 1 ? "" : "s"}`,
       );
 
-    const createAgents = installActions.filter(
-      (a) => a.type === "write-file" && a.path === AGENTS_FILE,
-    );
-    if (createAgents.length > 0)
-      summaryLines.push(`- Missing \`${AGENTS_FILE}\``);
-
-    const addLine = installActions.filter(
-      (a) => a.type === "append-line" && a.path === AGENTS_FILE,
-    );
-    if (addLine.length > 0)
-      summaryLines.push(`- Missing reminder line in \`${AGENTS_FILE}\``);
-
-    const howToDoc = installActions.filter(
-      (a) => a.type === "write-file" && a.path === HOW_TO_DOC_FILE,
-    );
-    if (howToDoc.length > 0)
-      summaryLines.push(`- Missing \`${HOW_TO_DOC_FILE}\``);
-
     process.stdout.write(`${summaryLines.join("\n")}\n\n`);
 
-    const allActions = [
-      ...renames,
-      ...frontmatters,
-      ...references,
-      ...installActions,
-    ];
-    if (allActions.length > 0) {
+    if (renames.length + frontmatters.length + references.length > 0) {
       const previewLines: string[] = [];
       if (renames.length > 0) previewLines.push(formatActions(renames));
       if (frontmatters.length > 0)
         previewLines.push(formatActions(frontmatters));
       if (references.length > 0) previewLines.push(formatActions(references));
-      if (installActions.length > 0)
-        previewLines.push(formatInstallActions(installActions));
 
       const preview = previewLines.filter(Boolean).join("\n");
       const limited = limitLines(preview, MAX_STEP_FILE_PREVIEW_LINES);

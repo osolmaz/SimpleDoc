@@ -323,6 +323,11 @@ export type MigrationPlanOptions = {
   forceUndatedPaths?: string[];
   includeCanonicalRenames?: boolean;
   normalizeDatePrefixedDocs?: boolean;
+  onProgress?: (info: {
+    phase: "scan";
+    current: number;
+    total: number;
+  }) => void;
   git?: GitClient;
 };
 
@@ -339,6 +344,7 @@ export async function planMigration(
   const includeCanonicalRenames = options.includeCanonicalRenames ?? true;
   const normalizeDatePrefixedDocs = options.normalizeDatePrefixedDocs ?? true;
   const git = options.git ?? createGitClient();
+  const onProgress = options.onProgress;
 
   const repoRootAbs = await git.getRepoRoot(cwd);
   const dirty = await git.isDirty(repoRootAbs);
@@ -357,8 +363,12 @@ export async function planMigration(
 
   const existingAll = await git.listRepoFiles(repoRootAbs);
   const existingOnDisk: string[] = [];
-  for (const filePath of existingAll) {
+  const totalFiles = existingAll.length;
+  for (let idx = 0; idx < existingAll.length; idx++) {
+    const filePath = existingAll[idx]!;
     if (await pathExists(repoRootAbs, filePath)) existingOnDisk.push(filePath);
+    if (onProgress)
+      onProgress({ phase: "scan", current: idx + 1, total: totalFiles });
   }
   const existingAllSet = new Set(existingOnDisk);
 

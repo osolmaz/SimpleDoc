@@ -1,6 +1,7 @@
 import process from "node:process";
 import { Command, CommanderError } from "commander";
 
+import { runCheck } from "./check.js";
 import { runMigrate } from "./migrate.js";
 
 type MigrateOptions = {
@@ -51,6 +52,13 @@ export async function runCli(argv: string[]): Promise<void> {
     )
     .action(async (options: MigrateOptions) => {
       await runMigrate(options);
+    });
+
+  program
+    .command("check")
+    .description("Fail if the repo violates SimpleDoc conventions (use in CI).")
+    .action(async () => {
+      await runCheck();
     });
 
   const rest = argv.slice(2);

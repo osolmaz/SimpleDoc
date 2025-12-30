@@ -85,3 +85,4 @@ SimpleDoc Guidelines:
 - [ ] Timeless vs. dated classification is correct and filenames reflect the choice.
 - [ ] Front matter is complete and accurate.
 - [ ] Links to related documentation exist where applicable.
+- [ ] Run `npx -y @simpledoc/simpledoc check` (or `simpledoc check`) to verify SimpleDoc conventions.

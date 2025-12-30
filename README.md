@@ -44,6 +44,28 @@ npx -y @simpledoc/simpledoc migrate
 
 This will start a step-by-step wizard to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
 
+## CI / Enforcement
+
+To enforce SimpleDoc conventions in CI, add a step that fails when the repo needs migration:
+
+```bash
+npx -y @simpledoc/simpledoc check
+```
+
+### GitHub Actions example
+
+SimpleDoc relies on git history for timestamps/authors, so ensure the repo is not a shallow clone:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- uses: actions/setup-node@v4
+  with:
+    node-version: 24
+- run: npx -y @simpledoc/simpledoc check
+```
+
 ## Why?
 
 If you have been a developer for a while, the conventions described above should be familiar and common sense to you. For some weird reason, a crystallized definition such as this one does not exist online, e.g. the way [JSend](https://github.com/omniti-labs/jsend) does for API responses. So this is an attempt to fill that gap.

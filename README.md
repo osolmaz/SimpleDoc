@@ -42,12 +42,6 @@ Install the bundled agent skill + `AGENTS.md` instructions (no doc migrations):
 npx -y @simpledoc/simpledoc install
 ```
 
-If you prefer to install the skill bundle directly into a repo-scoped Codex skill store:
-
-```bash
-npx -y @simpledoc/simpledoc --skill export simpledoc | npx -y skillflag install --agent codex --scope repo
-```
-
 ## Migrate
 
 Run the migrator from the repo root to rename/move docs and add frontmatter as needed:

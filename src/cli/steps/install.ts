@@ -4,13 +4,12 @@ import {
   AGENTS_FILE,
   SIMPLEDOC_SKILL_FILE,
 } from "../../installer.js";
+import type { InstallSelection } from "../install-helpers.js";
 import { noteWrapped, promptConfirm } from "../ui.js";
 
-export async function runInstallSteps(status: InstallationStatus): Promise<{
-  createAgentsFile: boolean;
-  addAttentionLine: boolean;
-  addSkill: boolean;
-} | null> {
+export async function runInstallSteps(
+  status: InstallationStatus,
+): Promise<InstallSelection | null> {
   let createAgentsFile = false;
   let addAttentionLine = false;
   let addSkill = false;

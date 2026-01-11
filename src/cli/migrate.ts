@@ -1,5 +1,5 @@
 import process from "node:process";
-import { cancel, intro, outro, spinner } from "@clack/prompts";
+import { intro, outro, spinner } from "@clack/prompts";
 
 import {
   formatActions,
@@ -21,6 +21,7 @@ import {
   getInstallationStatus,
 } from "../installer.js";
 import type { InstallAction } from "../installer.js";
+import { buildDefaultInstallActions } from "./install-helpers.js";
 import {
   MAX_STEP_FILE_PREVIEW_LINES,
   createScanProgressBarReporter,
@@ -28,6 +29,7 @@ import {
   noteWrapped,
   promptConfirm,
 } from "./ui.js";
+import { abort, getErrorMessage, hasInteractiveTty } from "./flow.js";
 import {
   detectLowercaseDocRenames,
   runLowercaseNamingStep,
@@ -53,16 +55,6 @@ type MigrateOptions = {
   force: boolean;
   author?: string;
 };
-
-function abort(message = "Aborted."): void {
-  cancel(message);
-  process.exitCode = 1;
-}
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
 
 function buildDefaultPreviews(opts: {
   plan: MigrationPlan;
@@ -183,20 +175,12 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     process.stderr.write(
       "Planning changes (this may take a while on large repos)...\n",
     );
-    const scanProgress = createScanProgressBarReporter(
-      Boolean(process.stdin.isTTY && process.stdout.isTTY),
-    );
+    const hasTty = hasInteractiveTty();
+    const scanProgress = createScanProgressBarReporter(hasTty);
     const planAll = await planMigration({ onProgress: scanProgress });
     const installStatus = await getInstallationStatus(planAll.repoRootAbs);
 
-    const installActionsAll = await buildInstallationActions({
-      createAgentsFile: !installStatus.agentsExists,
-      addAttentionLine:
-        installStatus.agentsExists && !installStatus.agentsHasAttentionLine,
-      addSkill: !installStatus.skillExists,
-    });
-
-    const hasTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    const installActionsAll = await buildDefaultInstallActions(installStatus);
     const interactiveWizard = hasTty && !options.yes && !options.dryRun;
 
     if (planAll.dirty && !options.force) {

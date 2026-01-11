@@ -165,13 +165,13 @@ test("plan: can force removing date prefix for date-prefixed docs when overridde
   ]);
 });
 
-test("plan: does not rename docs/HOW_TO_DOC.md", async (t) => {
+test("plan: ignores skills/simpledoc/SKILL.md", async (t) => {
   const repo = await makeTempRepo();
   t.after(repo.cleanup);
 
-  await writeFile(repo.dir, "docs/HOW_TO_DOC.md", "# How to doc\n");
+  await writeFile(repo.dir, "skills/simpledoc/SKILL.md", "# SimpleDoc skill\n");
   commitAll(repo.dir, {
-    message: "Add HOW_TO_DOC",
+    message: "Add SimpleDoc skill",
     author: "Alice <alice@example.com>",
     dateIso: "2024-07-01T12:00:00Z",
   });

@@ -14,7 +14,7 @@ import {
 } from "../migrator.js";
 import {
   AGENTS_FILE,
-  HOW_TO_DOC_FILE,
+  SIMPLEDOC_SKILL_FILE,
   applyInstallationActions,
   buildInstallationActions,
   formatInstallActions,
@@ -149,14 +149,14 @@ function buildDefaultPreviews(opts: {
         actionCount: addLine.length,
       });
 
-    const howToDoc = opts.installActions.filter(
-      (a) => a.type === "write-file" && a.path === HOW_TO_DOC_FILE,
+    const skillTemplate = opts.installActions.filter(
+      (a) => a.type === "write-file" && a.path === SIMPLEDOC_SKILL_FILE,
     );
-    if (howToDoc.length > 0)
+    if (skillTemplate.length > 0)
       defaultPreviews.push({
-        title: `Create \`${HOW_TO_DOC_FILE}\` template`,
-        actionsText: formatInstallActions(howToDoc),
-        actionCount: howToDoc.length,
+        title: `Create \`${SIMPLEDOC_SKILL_FILE}\` template`,
+        actionsText: formatInstallActions(skillTemplate),
+        actionCount: skillTemplate.length,
       });
   }
 
@@ -193,7 +193,7 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
       createAgentsFile: !installStatus.agentsExists,
       addAttentionLine:
         installStatus.agentsExists && !installStatus.agentsHasAttentionLine,
-      addHowToDoc: !installStatus.howToDocExists,
+      addSkill: !installStatus.skillExists,
     });
 
     const hasTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -408,8 +408,11 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
         summaryLines.push(`- Update \`${AGENTS_FILE}\` (add reminder line)`);
         continue;
       }
-      if (action.type === "write-file" && action.path === HOW_TO_DOC_FILE) {
-        summaryLines.push(`- Create \`${HOW_TO_DOC_FILE}\``);
+      if (
+        action.type === "write-file" &&
+        action.path === SIMPLEDOC_SKILL_FILE
+      ) {
+        summaryLines.push(`- Create \`${SIMPLEDOC_SKILL_FILE}\``);
         continue;
       }
     }

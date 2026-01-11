@@ -20,7 +20,7 @@ After finishing the setup, DELETE ONLY this section between dividers `---`. The 
 
 **Attention agent!** Complete every item below before touching documentation work:
 
-1. **Read this file in full for the current session.** No shortcuts. Open `docs/HOW_TO_DOC.md`, refresh your memory, and only then proceed.
+1. **Read this file in full for the current session.** No shortcuts.
 2. **Verify that git is initialized and configured.** You will need the name and email of the current user in order to populate the `author` field in the YAML frontmatter. Run the following one-liner to verify:
 
 ```bash

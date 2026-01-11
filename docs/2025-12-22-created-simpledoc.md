@@ -10,4 +10,4 @@ At the beginning, I did not know how to communicate the solution easily while fi
 
 So I created this. I hope it helps you create order out of chaos in your `docs/` folder.
 
-This post is both a blog post intended to mark this event, and an example for SimpleDoc itself, together with [HOW_TO_DOC.md](./HOW_TO_DOC.md) in this folder.
+This post is both a blog post intended to mark this event, and an example for SimpleDoc itself, together with the bundled skill at [skills/simpledoc/SKILL.md](../skills/simpledoc/SKILL.md).

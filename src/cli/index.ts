@@ -2,6 +2,7 @@ import process from "node:process";
 import { Command, CommanderError } from "commander";
 
 import { runCheck } from "./check.js";
+import { runInstall } from "./install.js";
 import { runMigrate } from "./migrate.js";
 
 type MigrateOptions = {
@@ -9,6 +10,10 @@ type MigrateOptions = {
   yes: boolean;
   force: boolean;
   author?: string;
+};
+type InstallOptions = {
+  dryRun: boolean;
+  yes: boolean;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -41,7 +46,7 @@ export async function runCli(argv: string[]): Promise<void> {
   program
     .command("migrate")
     .description(
-      "Install SimpleDoc agent docs and migrate a repo's docs to SimpleDoc conventions.",
+      "Install SimpleDoc agent instructions and migrate a repo's docs to SimpleDoc conventions.",
     )
     .option("--dry-run", "Print planned changes and exit", false)
     .option("-y, --yes", "Apply defaults without prompts", false)
@@ -52,6 +57,15 @@ export async function runCli(argv: string[]): Promise<void> {
     )
     .action(async (options: MigrateOptions) => {
       await runMigrate(options);
+    });
+
+  program
+    .command("install")
+    .description("Install SimpleDoc agent instructions (no doc migrations).")
+    .option("--dry-run", "Print planned changes and exit", false)
+    .option("-y, --yes", "Apply defaults without prompts", false)
+    .action(async (options: InstallOptions) => {
+      await runInstall(options);
     });
 
   program

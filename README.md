@@ -15,10 +15,10 @@ npx -y @simpledoc/simpledoc install
 If you prefer to install the skill bundle directly into a repo-scoped Codex skill store:
 
 ```bash
-npx -y @simpledoc/simpledoc --skill export simpledoc | skill-install --agent codex --scope repo
+npx -y @simpledoc/simpledoc --skill export simpledoc | npx -y skillflag install --agent codex --scope repo
 ```
 
-(`skill-install` is provided by the `skillflag` package.)
+(`npx skillflag install` is provided by the `skillflag` package.)
 
 ## Specification
 

@@ -18,8 +18,6 @@ If you prefer to install the skill bundle directly into a repo-scoped Codex skil
 npx -y @simpledoc/simpledoc --skill export simpledoc | npx -y skillflag install --agent codex --scope repo
 ```
 
-(`npx skillflag install` is provided by the `skillflag` package.)
-
 ## Specification
 
 SimpleDoc defines two types of files:
@@ -67,8 +65,6 @@ SimpleDoc ships a bundled `simpledoc` skill for agent instructions. To install i
 ```bash
 npx -y @simpledoc/simpledoc --skill export simpledoc | skill-install --agent codex --scope repo
 ```
-
-(`skill-install` is provided by the `skillflag` package.)
 
 ## CI / Enforcement
 

@@ -4,7 +4,7 @@
 
 SimpleDoc defines a small set of rules for the naming and placement of Markdown files in a codebase, agnostic of any documentation framework.
 
-## Install (Agent Instructions)
+## Install
 
 Install the bundled agent skill + `AGENTS.md` instructions (no doc migrations):
 

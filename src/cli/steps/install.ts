@@ -35,18 +35,16 @@ export async function runInstallSteps(
     addAttentionLine = include;
   }
 
-  if (!status.skillExists) {
-    noteWrapped(
-      `Will create \`${SIMPLEDOC_SKILL_FILE}\` from the bundled SimpleDoc skill (won't overwrite if it already exists).`,
-      "Proposed: Add skills/simpledoc/SKILL.md",
-    );
-    const include = await promptConfirm(
-      `Create \`${SIMPLEDOC_SKILL_FILE}\` template?`,
-      true,
-    );
-    if (include === null) return null;
-    addSkill = include;
-  }
+  noteWrapped(
+    `Will create \`${SIMPLEDOC_SKILL_FILE}\` from the bundled SimpleDoc skill (won't overwrite if it already exists).`,
+    "Proposed: Add skills/simpledoc/SKILL.md",
+  );
+  const include = await promptConfirm(
+    `Create \`${SIMPLEDOC_SKILL_FILE}\` template?`,
+    !status.skillExists,
+  );
+  if (include === null) return null;
+  addSkill = include;
 
   return { createAgentsFile, addAttentionLine, addSkill };
 }

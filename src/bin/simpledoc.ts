@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import process from "node:process";
-import { handleSkillflag } from "skillflag/dist/index.js";
+import { handleSkillflag } from "../cli/skillflag.js";
 
 import { runCli } from "../cli/index.js";
 

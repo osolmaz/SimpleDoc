@@ -9,8 +9,7 @@ export const SIMPLEDOC_SKILL_FILE = path.posix.join(
   "SKILL.md",
 );
 
-export const AGENTS_ATTENTION_LINE =
-  "**Attention agent!** Before creating ANY documentation, use the `simpledoc` skill in `skills/simpledoc/SKILL.md`.";
+export const AGENTS_ATTENTION_LINE = `**Attention agent!** Before creating ANY documentation, use the \`simpledoc\` skill in \`${SIMPLEDOC_SKILL_FILE}\`.`;
 
 export type InstallAction =
   | {
@@ -45,9 +44,18 @@ function defaultAgentsFileContent(): string {
 }
 
 async function readBundledSimpleDocSkill(): Promise<string> {
-  const url = new URL("../skills/simpledoc/SKILL.md", import.meta.url);
-  const templatePath = fileURLToPath(url);
-  return await fs.readFile(templatePath, "utf8");
+  const primaryUrl = new URL("../skills/simpledoc/SKILL.md", import.meta.url);
+  const primaryPath = fileURLToPath(primaryUrl);
+  try {
+    return await fs.readFile(primaryPath, "utf8");
+  } catch {
+    const fallbackUrl = new URL(
+      "../../skills/simpledoc/SKILL.md",
+      import.meta.url,
+    );
+    const fallbackPath = fileURLToPath(fallbackUrl);
+    return await fs.readFile(fallbackPath, "utf8");
+  }
 }
 
 async function fileExists(absPath: string): Promise<boolean> {

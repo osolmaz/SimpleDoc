@@ -2,7 +2,23 @@
 
 > Lightweight standard for organizing Markdown documentation in codebases
 
-SimpleDoc defines a small set of rules for the naming and placement of Markdown files in a codebase, agnostic of any documentation framework:
+SimpleDoc defines a small set of rules for the naming and placement of Markdown files in a codebase, agnostic of any documentation framework.
+
+## Install (Agent Instructions)
+
+Install the bundled agent skill + `AGENTS.md` instructions (no doc migrations):
+
+```bash
+npx -y @simpledoc/simpledoc install
+```
+
+If you prefer to install the skill bundle directly into a repo-scoped Codex skill store:
+
+```bash
+npx -y @simpledoc/simpledoc --skill export simpledoc | skill-install --agent codex --scope repo
+```
+
+(`skill-install` is provided by the `skillflag` package.)
 
 ## Specification
 
@@ -34,25 +50,15 @@ SimpleDoc defines two types of files:
 - Capitalized files SHOULD be used for general documents that are not tied to a specific time, e.g. `README.md`, `AGENTS.md`, `INSTALL.md`, `HOW_TO_DEBUG.md`.
 - If a capitalized filename has multiple words, it SHOULD use underscores (`CODE_OF_CONDUCT.md`). Dashes are common in the wild but not preferred by this spec.
 
-## Installation
+## Migration
 
-Run the migrator from the repo root:
+Run the migrator from the repo root to rename/move docs and add frontmatter as needed:
 
 ```bash
 npx -y @simpledoc/simpledoc migrate
 ```
 
 This will start a step-by-step wizard to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
-
-### Agent skill bundle
-
-SimpleDoc ships a bundled `simpledoc` skill for agent instructions. To install it into a repo-scoped Codex skill store:
-
-```bash
-npx -y @simpledoc/simpledoc --skill export simpledoc | skill-install --agent codex --scope repo
-```
-
-(`skill-install` is provided by the `skillflag` package.)
 
 ## CI / Enforcement
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import process from "node:process";
-import { handleSkillflag } from "skillflag";
+import { handleSkillflag } from "skillflag/dist/index.js";
 
 import { runCli } from "../cli/index.js";
 
@@ -10,7 +10,6 @@ if (args.includes("--skill")) {
     skillsRoot: new URL("../../skills/", import.meta.url),
   });
   process.exitCode = exitCode;
-  return;
+} else {
+  await runCli(args);
 }
-
-await runCli(args);

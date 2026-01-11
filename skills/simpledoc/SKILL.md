@@ -1,13 +1,18 @@
-# Documentation Guidelines
-
 ---
+name: simpledoc
+description: Create or update documentation in this repo following SimpleDoc conventions.
+---
+
+# SimpleDoc Documentation Skill
+
+Use this skill whenever you are asked to create or update documentation in this repository.
 
 ## MUST DO SETUP
 
-**Attention agent!** This file is a template for creating instructions on how to create documentation in this repository. The placeholder sections should be filled in, before anything else.
+**Attention agent!** This section is a template for creating instructions on how to create documentation in this repository. The placeholder sections must be filled in before anything else.
 
 1. Fetch the most recent SimpleDoc specification from https://github.com/osolmaz/SimpleDoc and copy it below, replacing the placeholder content.
-2. Ask the user about their preferences in documentation style: Do they prefer a certain style of writing, a certain tone, a certain level of technicality, a certain way to create implementation plans, etc. Do a few rounds of back-and-forth to get the user's preferences, and use the output to populate the placeholder content in the Preferences in Documentation Style section.
+2. Ask the user about their preferences in documentation style (tone, technicality, planning style, etc.). Do a few rounds of back-and-forth to get the user's preferences, then replace the placeholder content in the Preferences section.
 
 After finishing the setup, DELETE ONLY this section between dividers `---`. The other agent instruction below is to be kept as is.
 
@@ -15,7 +20,7 @@ After finishing the setup, DELETE ONLY this section between dividers `---`. The 
 
 **Attention agent!** Complete every item below before touching documentation work:
 
-1. **Read this file in full for the current session.** No shortcuts. Open `docs/HOW_TO_DOC.md`, refresh your memory, and only then proceed.
+1. **Read this file in full for the current session.** No shortcuts.
 2. **Verify that git is initialized and configured.** You will need the name and email of the current user in order to populate the `author` field in the YAML frontmatter. Run the following one-liner to verify:
 
 ```bash

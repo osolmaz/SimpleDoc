@@ -2,18 +2,18 @@ import type { InstallationStatus } from "../../installer.js";
 import {
   AGENTS_ATTENTION_LINE,
   AGENTS_FILE,
-  HOW_TO_DOC_FILE,
+  SIMPLEDOC_SKILL_FILE,
 } from "../../installer.js";
 import { noteWrapped, promptConfirm } from "../ui.js";
 
 export async function runInstallSteps(status: InstallationStatus): Promise<{
   createAgentsFile: boolean;
   addAttentionLine: boolean;
-  addHowToDoc: boolean;
+  addSkill: boolean;
 } | null> {
   let createAgentsFile = false;
   let addAttentionLine = false;
-  let addHowToDoc = false;
+  let addSkill = false;
 
   if (!status.agentsExists) {
     noteWrapped(
@@ -36,18 +36,18 @@ export async function runInstallSteps(status: InstallationStatus): Promise<{
     addAttentionLine = include;
   }
 
-  if (!status.howToDocExists) {
+  if (!status.skillExists) {
     noteWrapped(
-      `Will create \`${HOW_TO_DOC_FILE}\` from the bundled SimpleDoc template (won't overwrite if it already exists).`,
-      "Proposed: Add docs/HOW_TO_DOC.md",
+      `Will create \`${SIMPLEDOC_SKILL_FILE}\` from the bundled SimpleDoc skill (won't overwrite if it already exists).`,
+      "Proposed: Add skills/simpledoc/SKILL.md",
     );
     const include = await promptConfirm(
-      `Create \`${HOW_TO_DOC_FILE}\` template?`,
+      `Create \`${SIMPLEDOC_SKILL_FILE}\` template?`,
       true,
     );
     if (include === null) return null;
-    addHowToDoc = include;
+    addSkill = include;
   }
 
-  return { createAgentsFile, addAttentionLine, addHowToDoc };
+  return { createAgentsFile, addAttentionLine, addSkill };
 }

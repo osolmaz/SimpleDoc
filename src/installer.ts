@@ -3,10 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const AGENTS_FILE = "AGENTS.md";
-export const HOW_TO_DOC_FILE = path.posix.join("docs", "HOW_TO_DOC.md");
+export const SIMPLEDOC_SKILL_FILE = path.posix.join(
+  "skills",
+  "simpledoc",
+  "SKILL.md",
+);
 
 export const AGENTS_ATTENTION_LINE =
-  "**Attention agent!** Before creating ANY documentation, read the docs/HOW_TO_DOC.md file first. It contains guidelines on how to create documentation in this repository.";
+  "**Attention agent!** Before creating ANY documentation, use the `simpledoc` skill in `skills/simpledoc/SKILL.md`.";
 
 export type InstallAction =
   | {
@@ -24,7 +28,7 @@ export type InstallAction =
 export type InstallationStatus = {
   agentsExists: boolean;
   agentsHasAttentionLine: boolean;
-  howToDocExists: boolean;
+  skillExists: boolean;
 };
 
 function normalizeNewlines(input: string): string {
@@ -40,8 +44,8 @@ function defaultAgentsFileContent(): string {
   return ["# Agent Instructions", "", AGENTS_ATTENTION_LINE, ""].join("\n");
 }
 
-async function readBundledHowToDocTemplate(): Promise<string> {
-  const url = new URL("../docs/HOW_TO_DOC.md", import.meta.url);
+async function readBundledSimpleDocSkill(): Promise<string> {
+  const url = new URL("../skills/simpledoc/SKILL.md", import.meta.url);
   const templatePath = fileURLToPath(url);
   return await fs.readFile(templatePath, "utf8");
 }
@@ -59,7 +63,7 @@ export async function getInstallationStatus(
   repoRootAbs: string,
 ): Promise<InstallationStatus> {
   const agentsAbs = path.join(repoRootAbs, AGENTS_FILE);
-  const howToDocAbs = path.join(repoRootAbs, ...HOW_TO_DOC_FILE.split("/"));
+  const skillAbs = path.join(repoRootAbs, ...SIMPLEDOC_SKILL_FILE.split("/"));
 
   const agentsExists = await fileExists(agentsAbs);
   const agentsContent = agentsExists
@@ -69,15 +73,15 @@ export async function getInstallationStatus(
     ? hasExactLine(agentsContent, AGENTS_ATTENTION_LINE)
     : false;
 
-  const howToDocExists = await fileExists(howToDocAbs);
+  const skillExists = await fileExists(skillAbs);
 
-  return { agentsExists, agentsHasAttentionLine, howToDocExists };
+  return { agentsExists, agentsHasAttentionLine, skillExists };
 }
 
 export async function buildInstallationActions(opts: {
   createAgentsFile: boolean;
   addAttentionLine: boolean;
-  addHowToDoc: boolean;
+  addSkill: boolean;
 }): Promise<InstallAction[]> {
   const actions: InstallAction[] = [];
 
@@ -98,11 +102,11 @@ export async function buildInstallationActions(opts: {
     });
   }
 
-  if (opts.addHowToDoc) {
+  if (opts.addSkill) {
     actions.push({
       type: "write-file",
-      path: HOW_TO_DOC_FILE,
-      content: await readBundledHowToDocTemplate(),
+      path: SIMPLEDOC_SKILL_FILE,
+      content: await readBundledSimpleDocSkill(),
       ifExists: "skip",
     });
   }

@@ -44,6 +44,16 @@ npx -y @simpledoc/simpledoc migrate
 
 This will start a step-by-step wizard to migrate existing documentation to SimpleDoc and add instructions to `AGENTS.md` to follow it.
 
+### Agent skill bundle
+
+SimpleDoc ships a bundled `simpledoc` skill for agent instructions. To install it into a repo-scoped Codex skill store:
+
+```bash
+npx -y @simpledoc/simpledoc --skill export simpledoc | skill-install --agent codex --scope repo
+```
+
+(`skill-install` is provided by the `skillflag` package.)
+
 ## CI / Enforcement
 
 To enforce SimpleDoc conventions in CI, add a step that fails when the repo needs migration:
@@ -88,7 +98,7 @@ The ISO 8601 date-prefixed format was inspired by the [Jekyll](https://jekyllrb.
 
 ## Examples
 
-For an example in this repo, see [docs/2025-12-22-created-simpledoc.md](docs/2025-12-22-created-simpledoc.md) and [docs/HOW_TO_DOC.md](docs/HOW_TO_DOC.md).
+For an example in this repo, see [docs/2025-12-22-created-simpledoc.md](docs/2025-12-22-created-simpledoc.md) and [skills/simpledoc/SKILL.md](skills/simpledoc/SKILL.md).
 
 ## License
 

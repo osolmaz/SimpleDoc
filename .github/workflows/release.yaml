@@ -36,3 +36,4 @@ jobs:
         env:
           DEBUG: release-it:config
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_DEBUG: release-it:config

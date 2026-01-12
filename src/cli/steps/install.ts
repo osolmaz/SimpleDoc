@@ -4,13 +4,12 @@ import {
   AGENTS_FILE,
   SIMPLEDOC_SKILL_FILE,
 } from "../../installer.js";
+import type { InstallSelection } from "../install-helpers.js";
 import { noteWrapped, promptConfirm } from "../ui.js";
 
-export async function runInstallSteps(status: InstallationStatus): Promise<{
-  createAgentsFile: boolean;
-  addAttentionLine: boolean;
-  addSkill: boolean;
-} | null> {
+export async function runInstallSteps(
+  status: InstallationStatus,
+): Promise<InstallSelection | null> {
   let createAgentsFile = false;
   let addAttentionLine = false;
   let addSkill = false;
@@ -36,18 +35,16 @@ export async function runInstallSteps(status: InstallationStatus): Promise<{
     addAttentionLine = include;
   }
 
-  if (!status.skillExists) {
-    noteWrapped(
-      `Will create \`${SIMPLEDOC_SKILL_FILE}\` from the bundled SimpleDoc skill (won't overwrite if it already exists).`,
-      "Proposed: Add skills/simpledoc/SKILL.md",
-    );
-    const include = await promptConfirm(
-      `Create \`${SIMPLEDOC_SKILL_FILE}\` template?`,
-      true,
-    );
-    if (include === null) return null;
-    addSkill = include;
-  }
+  noteWrapped(
+    `Will create \`${SIMPLEDOC_SKILL_FILE}\` from the bundled SimpleDoc skill (won't overwrite if it already exists).`,
+    "Proposed: Add skills/simpledoc/SKILL.md",
+  );
+  const include = await promptConfirm(
+    `Create \`${SIMPLEDOC_SKILL_FILE}\` template?`,
+    !status.skillExists,
+  );
+  if (include === null) return null;
+  addSkill = include;
 
   return { createAgentsFile, addAttentionLine, addSkill };
 }

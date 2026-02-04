@@ -113,7 +113,7 @@ Given:
 
 The full timestamp is:
 
-- `YYYY-MM-DDTHH:MM[:SS]±HH:MM`
+- `YYYY-MM-DDTHH:MM[:SS]+HH:MM` or `YYYY-MM-DDTHH:MM[:SS]-HH:MM`
 
 Example:
 

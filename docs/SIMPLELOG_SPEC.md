@@ -132,6 +132,7 @@ When the CLI writes an entry:
 5. Append-only behavior:
    - If the last hour section in the file is not `HH:00`, append a new `## HH:00` at the end.
    - Append the new entry as the last line in the current section (i.e., at file end after the section header and any existing entries).
+   - A CLI MAY start a new `## HH:00` section when the last entry is older than a configurable threshold (for example, 5 minutes) to separate sessions, even if the hour has not changed.
 
 This guarantees the tool only appends (no in-file insertion) while keeping hour grouping.
 

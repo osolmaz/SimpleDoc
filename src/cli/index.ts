@@ -3,6 +3,7 @@ import { Command, CommanderError } from "commander";
 
 import { runCheck } from "./check.js";
 import { runInstall } from "./install.js";
+import { runLog } from "./log.js";
 import { runMigrate } from "./migrate.js";
 
 type MigrateOptions = {
@@ -14,6 +15,10 @@ type MigrateOptions = {
 type InstallOptions = {
   dryRun: boolean;
   yes: boolean;
+};
+type LogOptions = {
+  root?: string;
+  thresholdMinutes: string;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -73,6 +78,21 @@ export async function runCli(argv: string[]): Promise<void> {
     .description("Fail if the repo violates SimpleDoc conventions (use in CI).")
     .action(async () => {
       await runCheck();
+    });
+
+  program
+    .command("log")
+    .description("Append a SimpleLog entry (Daily Markdown Log) to docs/logs.")
+    .argument("<message...>", "Entry text to append")
+    .option("--root <dir>", "Root directory for log files (default: docs/logs)")
+    .option(
+      "--threshold-minutes <minutes>",
+      "Start a new time section if the last entry is older than this (default: 5). Use 0 to disable.",
+      "5",
+    )
+    .action(async (messageParts: string[], options: LogOptions) => {
+      const message = messageParts.join(" ");
+      await runLog(message, options);
     });
 
   const rest = argv.slice(2);

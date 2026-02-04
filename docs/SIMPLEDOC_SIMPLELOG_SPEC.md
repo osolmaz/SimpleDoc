@@ -1,11 +1,11 @@
 # SimpleDoc/SimpleLog
 
-> Daily Markdown Log (DML) v1 — Specification
+> Daily Markdown Log (DML) v1 - Specification
 
 ## 1) Storage layout
 
 - **Root directory:** any path. When used inside a SimpleDoc codebase, logs SHOULD live under `docs/` or `docs/<topic>/` to remain compliant with SimpleDoc.
-- **Daily file name:** `YYYY-MM-DD.md` (local date in the chosen “primary” timezone).
+- **Daily file name:** `YYYY-MM-DD.md` (local date in the chosen "primary" timezone).
   - Example: `2025-12-01.md`
 - **Optional subdirectories** (recommended when many files):
   - `YYYY/YYYY-MM-DD.md` or `YYYY/MM/YYYY-MM-DD.md`
@@ -50,7 +50,7 @@ Notes:
 Entries are grouped under hour headings.
 
 - **Section heading format (required):** `## HH:00`
-  - `HH` is 24-hour, zero-padded (`00`–`23`).
+  - `HH` is 24-hour, zero-padded (`00-23`).
 
 Example:
 
@@ -76,7 +76,7 @@ Required entry prefix:
 Where:
 
 - `<TIME>` is `HH:MM` or `HH:MM:SS`
-- `<OFFSET>` is `Z` or `±HH:MM` (e.g., `+01:00`, `-05:00`)
+- `<OFFSET>` is `Z` or `+HH:MM` or `-HH:MM` (e.g., `+01:00`, `-05:00`)
 
 Recommended entry body conventions (all optional):
 
@@ -109,7 +109,7 @@ Example:
 Given:
 
 - file date `YYYY-MM-DD`
-- entry prefix `HH:MM[:SS]±HH:MM`
+- entry prefix `HH:MM[:SS]+HH:MM` or `HH:MM[:SS]-HH:MM`
 
 The full timestamp is:
 
@@ -125,7 +125,7 @@ Example:
 
 When the CLI writes an entry:
 
-1. Determine “now” in the primary timezone from the header (or CLI config).
+1. Determine "now" in the primary timezone from the header (or CLI config).
 2. Select file by the local date in that timezone: `YYYY-MM-DD.md`.
 3. If the file does not exist, create it with the required header.
 4. Select section by local hour: `## HH:00`.

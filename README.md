@@ -20,6 +20,7 @@ Configuration for tooling can be shared in `simpledoc.json` and overridden per-u
 - MUST put date-prefixed files in a top level `docs/` folder, or a subfolder `docs/<topic>/`. Subfolders MAY be nested indefinitely.
 - MUST use ISO 8601 date prefixes (`YYYY-MM-DD`) — the date MUST contain dashes.
 - After the date prefix, lowercase filenames SHOULD use dashes (`-`) as word delimiters (kebab-case). Avoid spaces and underscores.
+- The date prefix MAY be the entire filename (for example, daily logs like `docs/logs/2026-02-04.md`).
 - MUST NOT use capital letters in filename for Latin, Greek, Cyrillic and other writing systems that have lowercase/uppercase distinction.
 - MAY use non-ASCII characters, e.g. `docs/2025-12-22-postmortem-login-ausfälle.md`, `docs/2025-12-22-功能-设计说明.md`.
 - Date-prefixed files SHOULD contain YAML frontmatter with at least `title`, `author` and `date` fields, but we are all people and sometimes don't have time to write a proper frontmatter, so it is not required. E.g.

@@ -119,13 +119,13 @@ function normalizeBaseName(baseName: string, mode: RenameCaseMode): string {
 
   const dateParts = parseDatePrefixedStem(stem);
   if (dateParts) {
-    const fallback = mode === "capitalized" ? "UNTITLED" : "untitled";
-    const rest = dateParts.rest || fallback;
+    if (!dateParts.rest) return `${dateParts.date}${ext}`;
     const restNormalized =
       mode === "capitalized"
-        ? normalizeCapitalizedStem(rest)
-        : normalizeLowercaseStem(rest);
-    return `${dateParts.date}-${restNormalized || fallback}${ext}`;
+        ? normalizeCapitalizedStem(dateParts.rest)
+        : normalizeLowercaseStem(dateParts.rest);
+    if (!restNormalized) return `${dateParts.date}${ext}`;
+    return `${dateParts.date}-${restNormalized}${ext}`;
   }
 
   const normalizedStem =

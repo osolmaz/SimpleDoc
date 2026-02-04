@@ -11,6 +11,9 @@ import {
   isLowercaseDocBaseName,
   isMarkdownFile,
 } from "./naming.js";
+import { normalizeDocsRoot } from "./paths.js";
+import { buildIgnoreMatcher } from "./ignore.js";
+import { buildFrontmatter } from "./frontmatter.js";
 
 export type { RenameCaseMode } from "./naming.js";
 
@@ -70,16 +73,6 @@ function hasFrontmatter(content: string): boolean {
   if (end === -1) return false;
   const after = s.slice(end + 1);
   return after.startsWith("---\n") || after.startsWith("---\r\n");
-}
-
-function yamlQuote(value: string): string {
-  const s = String(value).replace(/\r?\n/g, " ").trim();
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function yamlList(values: string[]): string {
-  const items = values.map((value) => yamlQuote(value));
-  return `[${items.join(", ")}]`;
 }
 
 type ReferenceReplacement = { from: string; to: string };
@@ -188,7 +181,7 @@ async function readSmallTextFileForReferences(
   return content;
 }
 
-function buildFrontmatter({
+function buildDocFrontmatter({
   title,
   author,
   date,
@@ -199,15 +192,10 @@ function buildFrontmatter({
   date: string;
   tags?: string[];
 }): string {
-  const lines = [
-    "---",
-    `title: ${yamlQuote(title)}`,
-    `author: ${yamlQuote(author)}`,
-    `date: ${yamlQuote(date)}`,
-  ];
-  if (tags && tags.length > 0) lines.push(`tags: ${yamlList(tags)}`);
-  lines.push("---");
-  return lines.join("\n");
+  return buildFrontmatter(
+    { title, author, date, tags },
+    { order: ["title", "author", "date", "tags"], quoteStrings: true },
+  );
 }
 
 async function getFileSystemInfo(
@@ -303,64 +291,8 @@ async function listRootFiles(repoRootAbs: string): Promise<string[]> {
     .filter((name) => !name.startsWith("."));
 }
 
-function normalizeDocsRoot(root: string): string {
-  const normalized = root
-    .replace(/\\/g, "/")
-    .replace(/^\.\/+/, "")
-    .replace(/\/+$/, "");
-  if (!normalized || normalized === ".") return "docs";
-  return normalized;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function globToRegexSource(pattern: string): string {
-  let out = "";
-  for (let i = 0; i < pattern.length; i += 1) {
-    const ch = pattern[i]!;
-    if (ch === "*") {
-      if (pattern[i + 1] === "*") {
-        const next = pattern[i + 2];
-        if (next === "/") {
-          out += "(?:.*/)?";
-          i += 2;
-        } else {
-          out += ".*";
-          i += 1;
-        }
-        continue;
-      }
-      out += "[^/]*";
-      continue;
-    }
-    if (ch === "?") {
-      out += "[^/]";
-      continue;
-    }
-    out += escapeRegExp(ch);
-  }
-  return out;
-}
-
-function globToRegExp(pattern: string): RegExp {
-  let normalized = pattern.replace(/\\/g, "/").replace(/^\.\/+/, "");
-  normalized = normalized.replace(/\/+$/, "");
-  if (normalized.endsWith("/**")) {
-    const base = normalized.slice(0, -3);
-    return new RegExp(`^${globToRegexSource(base)}(?:/.*)?$`);
-  }
-  return new RegExp(`^${globToRegexSource(normalized)}$`);
-}
-
-function buildIgnoreMatcher(patterns: string[]): (relPath: string) => boolean {
-  if (patterns.length === 0) return () => false;
-  const regexes = patterns.map((pattern) => globToRegExp(pattern));
-  return (relPath: string): boolean => {
-    const normalized = relPath.replace(/\\/g, "/");
-    return regexes.some((regex) => regex.test(normalized));
-  };
 }
 
 export function formatActions(actions: MigrationAction[]): string {
@@ -819,7 +751,7 @@ export async function runMigrationPlan(
       options?.authorOverride ??
       options?.authorRewrites?.[action.author] ??
       action.author;
-    const frontmatter = buildFrontmatter({
+    const frontmatter = buildDocFrontmatter({
       title: action.title,
       author,
       date: action.date,

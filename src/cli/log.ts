@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { loadConfig } from "../config.js";
+import { buildFrontmatter, type FrontmatterValue } from "../frontmatter.js";
 
 type LogOptions = {
   root?: string;
@@ -153,38 +154,15 @@ function stripLegacyHeader(content: string): string {
   return lines.slice(idx).join("\n");
 }
 
-type FrontmatterValue = string | string[];
-
-function yamlQuote(value: string): string {
-  const s = String(value).replace(/\r?\n/g, " ").trim();
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function formatFrontmatterValue(value: FrontmatterValue): string {
-  if (Array.isArray(value))
-    return `[${value.map((item) => yamlQuote(item)).join(", ")}]`;
-  return value;
-}
-
-function buildFrontmatter(data: Record<string, FrontmatterValue>): string {
-  const preferredOrder = [
-    "title",
-    "author",
-    "date",
-    "tz",
-    "created",
-    "updated",
-  ];
-  const preferred = preferredOrder.filter((key) => key in data);
-  const extras = Object.keys(data)
-    .filter((key) => !preferredOrder.includes(key))
-    .sort();
-  const keys = [...preferred, ...extras];
-  const lines = keys
-    .map((key) => `${key}: ${formatFrontmatterValue(data[key]!)}`)
-    .filter((line) => !line.endsWith(": "));
-  return `---\n${lines.join("\n")}\n---\n\n`;
-}
+const FRONTMATTER_ORDER = [
+  "title",
+  "author",
+  "date",
+  "tz",
+  "created",
+  "updated",
+  "tags",
+];
 
 function resolveAuthor(): string {
   const name =
@@ -416,7 +394,9 @@ export async function runLog(
     ) {
       updatedFrontmatterData.tags = config.frontmatterDefaults.tags;
     }
-    const updatedFrontmatter = buildFrontmatter(updatedFrontmatterData);
+    const updatedFrontmatter = buildFrontmatter(updatedFrontmatterData, {
+      order: FRONTMATTER_ORDER,
+    });
     const nextContent = joinFrontmatterAndBody(updatedFrontmatter, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");
     process.stdout.write(`Logged to ${filePath}\n`);

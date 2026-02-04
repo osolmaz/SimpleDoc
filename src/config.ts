@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { createGitClient, type GitClient } from "./git.js";
+import { normalizeDocsRoot } from "./paths.js";
 
 type FrontmatterDefaults = {
   author?: string;
@@ -93,11 +94,14 @@ async function readConfigFile(
 }
 
 function normalizeRelPath(
-  input: string | undefined,
+  input: unknown,
   repoRootAbs: string,
   fallback: string,
+  label: string,
 ): string {
-  const trimmed = (input ?? "").trim();
+  if (input === undefined) return fallback;
+  if (typeof input !== "string") throw new Error(`${label} must be a string`);
+  const trimmed = input.trim();
   if (!trimmed) return fallback;
 
   let relPath = trimmed;
@@ -122,20 +126,40 @@ function normalizeTags(value: unknown): string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value))
     throw new Error("frontmatter.defaults.tags must be an array of strings");
-  const tags = value.map((item) => String(item)).filter((item) => item.trim());
+  const tags = value
+    .map((item) => {
+      if (typeof item !== "string")
+        throw new Error(
+          "frontmatter.defaults.tags must be an array of strings",
+        );
+      return item.trim();
+    })
+    .filter((item) => item.length > 0);
   return tags.length > 0 ? tags : undefined;
 }
 
 function normalizeFrontmatterDefaults(value: unknown): FrontmatterDefaults {
-  if (!isPlainObject(value)) return {};
+  if (value === undefined) return {};
+  if (!isPlainObject(value))
+    throw new Error("frontmatter.defaults must be an object");
   const author =
-    typeof value.author === "string" && value.author.trim()
-      ? value.author.trim()
-      : undefined;
+    typeof value.author === "string"
+      ? value.author.trim() || undefined
+      : value.author === undefined
+        ? undefined
+        : (() => {
+            throw new Error("frontmatter.defaults.author must be a string");
+          })();
   const titlePrefix =
-    typeof value.titlePrefix === "string" && value.titlePrefix.trim()
-      ? value.titlePrefix.trim()
-      : undefined;
+    typeof value.titlePrefix === "string"
+      ? value.titlePrefix.trim() || undefined
+      : value.titlePrefix === undefined
+        ? undefined
+        : (() => {
+            throw new Error(
+              "frontmatter.defaults.titlePrefix must be a string",
+            );
+          })();
   const tags = normalizeTags(value.tags);
   return { author, titlePrefix, tags };
 }
@@ -145,17 +169,35 @@ function normalizeCheckIgnore(value: unknown): string[] {
   if (!Array.isArray(value))
     throw new Error("check.ignore must be an array of strings");
   const patterns = value
-    .map((item) => String(item).trim())
+    .map((item) => {
+      if (typeof item !== "string")
+        throw new Error("check.ignore must be an array of strings");
+      return item.trim();
+    })
     .filter((item) => item.length > 0);
   return patterns;
 }
 
 function normalizeThreshold(value: unknown): number {
   if (value === undefined) return DEFAULT_SIMPLELOG_THRESHOLD_MINUTES;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0)
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
     throw new Error("simplelog.thresholdMinutes must be a number >= 0");
-  return parsed;
+  return value;
+}
+
+function normalizeOptionalString(
+  value: unknown,
+  label: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function assertPlainObjectOptional(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) throw new Error(`${label} must be an object`);
 }
 
 export async function loadConfig(
@@ -177,24 +219,37 @@ export async function loadConfig(
   const localConfig = (await readConfigFile(localConfigPath)) ?? {};
   const merged = mergeConfig(repoConfig, localConfig);
 
-  const docsRoot = normalizeRelPath(
-    merged.docs?.root,
-    repoRootAbs,
-    DEFAULT_DOCS_ROOT,
+  assertPlainObjectOptional(merged.docs, "docs");
+  assertPlainObjectOptional(merged.frontmatter, "frontmatter");
+  assertPlainObjectOptional(
+    merged.frontmatter?.defaults,
+    "frontmatter.defaults",
   );
+  assertPlainObjectOptional(merged.check, "check");
+  assertPlainObjectOptional(merged.simplelog, "simplelog");
+
+  const docsRoot = normalizeDocsRoot(
+    normalizeRelPath(
+      merged.docs?.root,
+      repoRootAbs,
+      DEFAULT_DOCS_ROOT,
+      "docs.root",
+    ),
+  );
+  const defaultSimplelogRoot = path.posix.join(docsRoot, "logs");
   const simplelogRoot = normalizeRelPath(
-    merged.simplelog?.root ?? path.posix.join(docsRoot, "logs"),
+    merged.simplelog?.root,
     repoRootAbs,
-    path.posix.join(docsRoot, "logs"),
+    defaultSimplelogRoot,
+    "simplelog.root",
   );
   const thresholdMinutes = normalizeThreshold(
     merged.simplelog?.thresholdMinutes,
   );
-  const timezone =
-    typeof merged.simplelog?.timezone === "string" &&
-    merged.simplelog.timezone.trim()
-      ? merged.simplelog.timezone.trim()
-      : undefined;
+  const timezone = normalizeOptionalString(
+    merged.simplelog?.timezone,
+    "simplelog.timezone",
+  );
 
   const frontmatterDefaults = normalizeFrontmatterDefaults(
     merged.frontmatter?.defaults,

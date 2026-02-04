@@ -6,6 +6,7 @@ import {
   isAllCapsDocBaseName,
   isMarkdownFile,
 } from "./naming.js";
+import { normalizeDocsRoot } from "./paths.js";
 
 export type DocLocation = "root" | "docs" | "other";
 
@@ -17,15 +18,6 @@ export type DocClassification = {
   datePrefix: string | null;
   shouldDatePrefix: boolean;
 };
-
-function normalizeDocsRoot(docsRoot: string): string {
-  const normalized = docsRoot
-    .replace(/\\/g, "/")
-    .replace(/^\.\/+/, "")
-    .replace(/\/+$/, "");
-  if (!normalized || normalized === ".") return "docs";
-  return normalized;
-}
 
 export function classifyDoc(
   relPath: string,

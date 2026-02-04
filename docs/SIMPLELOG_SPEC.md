@@ -1,6 +1,6 @@
-# SimpleDoc/SimpleLog
+# SimpleLog
 
-> Daily Markdown Log (DML) v1 - Specification
+> SimpleDoc subspec: Daily Markdown Log (DML) v1 - Specification
 
 ## 1) Storage layout
 

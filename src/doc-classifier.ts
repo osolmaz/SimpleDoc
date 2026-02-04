@@ -6,6 +6,7 @@ import {
   isAllCapsDocBaseName,
   isMarkdownFile,
 } from "./naming.js";
+import { normalizeDocsRoot } from "./paths.js";
 
 export type DocLocation = "root" | "docs" | "other";
 
@@ -18,13 +19,18 @@ export type DocClassification = {
   shouldDatePrefix: boolean;
 };
 
-export function classifyDoc(relPath: string): DocClassification {
+export function classifyDoc(
+  relPath: string,
+  opts?: { docsRoot?: string },
+): DocClassification {
   const baseName = path.posix.basename(relPath);
   if (!isMarkdownFile(baseName))
     throw new Error(`classifyDoc expected a Markdown file, got: ${relPath}`);
 
+  const docsRoot = normalizeDocsRoot(opts?.docsRoot ?? "docs");
+  const docsPrefix = `${docsRoot}/`;
   const location: DocLocation = relPath.includes("/")
-    ? relPath.startsWith("docs/")
+    ? relPath.startsWith(docsPrefix)
       ? "docs"
       : "other"
     : "root";

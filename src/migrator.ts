@@ -11,6 +11,9 @@ import {
   isLowercaseDocBaseName,
   isMarkdownFile,
 } from "./naming.js";
+import { normalizeDocsRoot } from "./paths.js";
+import { buildIgnoreMatcher } from "./ignore.js";
+import { buildFrontmatter, DOC_FRONTMATTER_ORDER } from "./frontmatter.js";
 
 export type { RenameCaseMode } from "./naming.js";
 
@@ -26,6 +29,7 @@ export type FrontmatterAction = {
   title: string;
   author: string;
   date: string;
+  tags?: string[];
 };
 export type MigrationAction =
   | RenameAction
@@ -36,6 +40,7 @@ export type MigrationPlan = {
   repoRootAbs: string;
   trackedSet: Set<string>;
   dirty: boolean;
+  docsRoot: string;
   actions: MigrationAction[];
 };
 
@@ -68,15 +73,6 @@ function hasFrontmatter(content: string): boolean {
   if (end === -1) return false;
   const after = s.slice(end + 1);
   return after.startsWith("---\n") || after.startsWith("---\r\n");
-}
-
-function yamlQuote(value: string): string {
-  const s = String(value).replace(/\r?\n/g, " ").trim();
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 type ReferenceReplacement = { from: string; to: string };
@@ -185,22 +181,21 @@ async function readSmallTextFileForReferences(
   return content;
 }
 
-function buildFrontmatter({
+function buildDocFrontmatter({
   title,
   author,
   date,
+  tags,
 }: {
   title: string;
   author: string;
   date: string;
+  tags?: string[];
 }): string {
-  return [
-    "---",
-    `title: ${yamlQuote(title)}`,
-    `author: ${yamlQuote(author)}`,
-    `date: ${yamlQuote(date)}`,
-    "---",
-  ].join("\n");
+  return buildFrontmatter(
+    { title, author, date, tags },
+    { order: DOC_FRONTMATTER_ORDER, quoteStrings: true },
+  );
 }
 
 async function getFileSystemInfo(
@@ -296,6 +291,10 @@ async function listRootFiles(repoRootAbs: string): Promise<string[]> {
     .filter((name) => !name.startsWith("."));
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function formatActions(actions: MigrationAction[]): string {
   const lines: string[] = [];
   for (const action of actions) {
@@ -315,6 +314,13 @@ export function formatActions(actions: MigrationAction[]): string {
 
 export type MigrationPlanOptions = {
   cwd?: string;
+  docsRoot?: string;
+  ignoreGlobs?: string[];
+  frontmatterDefaults?: {
+    author?: string;
+    tags?: string[];
+    titlePrefix?: string;
+  };
   moveRootMarkdownToDocs?: boolean;
   renameDocsToDatePrefix?: boolean;
   addFrontmatter?: boolean;
@@ -335,6 +341,9 @@ export async function planMigration(
   options: MigrationPlanOptions = {},
 ): Promise<MigrationPlan> {
   const cwd = options.cwd ?? process.cwd();
+  const docsRoot = normalizeDocsRoot(options.docsRoot ?? "docs");
+  const docsRootPrefix = `${docsRoot}/`;
+  const ignoreMatcher = buildIgnoreMatcher(options.ignoreGlobs ?? []);
   const moveRootMarkdownToDocs = options.moveRootMarkdownToDocs ?? true;
   const renameDocsToDatePrefix = options.renameDocsToDatePrefix ?? true;
   const addFrontmatter = options.addFrontmatter ?? true;
@@ -353,6 +362,7 @@ export async function planMigration(
 
   const rootFiles = await listRootFiles(repoRootAbs);
   const rootMarkdown = rootFiles.filter((f) => {
+    if (ignoreMatcher(f)) return false;
     if (!isMarkdownFile(f)) return false;
     return (
       Boolean(getCanonicalBaseName(f)) ||
@@ -363,17 +373,20 @@ export async function planMigration(
 
   const existingAll = await git.listRepoFiles(repoRootAbs);
   const existingOnDisk: string[] = [];
+  const existingOnDiskAll: string[] = [];
   const totalFiles = existingAll.length;
   for (let idx = 0; idx < existingAll.length; idx++) {
     const filePath = existingAll[idx]!;
-    if (await pathExists(repoRootAbs, filePath)) existingOnDisk.push(filePath);
+    const exists = await pathExists(repoRootAbs, filePath);
+    if (exists) existingOnDiskAll.push(filePath);
+    if (!ignoreMatcher(filePath) && exists) existingOnDisk.push(filePath);
     if (onProgress)
       onProgress({ phase: "scan", current: idx + 1, total: totalFiles });
   }
-  const existingAllSet = new Set(existingOnDisk);
+  const existingAllSet = new Set(existingOnDiskAll);
 
   const docsMarkdown = existingOnDisk.filter(
-    (p) => p.startsWith("docs/") && isMarkdownFile(p),
+    (p) => p.startsWith(docsRootPrefix) && isMarkdownFile(p),
   );
   const candidates = [...new Set([...rootMarkdown, ...docsMarkdown])];
 
@@ -392,7 +405,7 @@ export async function planMigration(
 
   const desiredTargets = new Map<string, string>();
   for (const filePath of candidates) {
-    const classification = classifyDoc(filePath);
+    const classification = classifyDoc(filePath, { docsRoot });
     const base = classification.baseName;
     const desiredMode: RenameCaseMode =
       renameCaseOverrides[filePath] ?? classification.mode;
@@ -427,7 +440,7 @@ export async function planMigration(
         const targetBase = normalizeDatePrefixedDocs
           ? applyRenameCase(base, desiredMode)
           : base;
-        desiredTargets.set(filePath, path.posix.join("docs", targetBase));
+        desiredTargets.set(filePath, path.posix.join(docsRoot, targetBase));
         continue;
       }
 
@@ -439,7 +452,7 @@ export async function planMigration(
         const slug = applyRenameCase(base, desiredMode);
         desiredTargets.set(
           filePath,
-          path.posix.join("docs", `${meta.date}-${slug}`),
+          path.posix.join(docsRoot, `${meta.date}-${slug}`),
         );
         continue;
       }
@@ -565,15 +578,23 @@ export async function planMigration(
       if (hasFrontmatter(content)) continue;
 
       const meta = await getMeta(filePath);
-      const author = meta.author ?? "Unknown <unknown@example.com>";
+      const defaultAuthor = options.frontmatterDefaults?.author;
+      const author =
+        defaultAuthor ?? meta.author ?? "Unknown <unknown@example.com>";
       const date = datePrefix;
-      const title = titleFromMarkdown(content) ?? titleFromSlug(targetBase);
+      const titleFromDoc = titleFromMarkdown(content);
+      let title = titleFromDoc ?? titleFromSlug(targetBase);
+      if (!titleFromDoc && options.frontmatterDefaults?.titlePrefix) {
+        const prefix = options.frontmatterDefaults.titlePrefix.trim();
+        title = `${prefix} ${title}`.trim();
+      }
       frontmatterAdds.push({
         type: "frontmatter",
         path: targetPath,
         title,
         author,
         date,
+        tags: options.frontmatterDefaults?.tags,
       });
     }
   }
@@ -587,9 +608,10 @@ export async function planMigration(
     const searchStrings = [...new Set(finalRenames.map((r) => r.from))];
     const candidatesForScan = new Set<string>();
     for (const filePath of await git.grepFilesFixed(repoRootAbs, searchStrings))
-      candidatesForScan.add(filePath);
+      if (!ignoreMatcher(filePath)) candidatesForScan.add(filePath);
     for (const filePath of existingOnDisk) {
       if (trackedSet.has(filePath)) continue;
+      if (ignoreMatcher(filePath)) continue;
       candidatesForScan.add(filePath);
     }
 
@@ -616,6 +638,7 @@ export async function planMigration(
     repoRootAbs,
     trackedSet,
     dirty,
+    docsRoot,
     actions,
   };
 }
@@ -728,10 +751,11 @@ export async function runMigrationPlan(
       options?.authorOverride ??
       options?.authorRewrites?.[action.author] ??
       action.author;
-    const frontmatter = buildFrontmatter({
+    const frontmatter = buildDocFrontmatter({
       title: action.title,
       author,
       date: action.date,
+      tags: action.tags,
     });
     await writeFrontmatter(plan.repoRootAbs, action.path, frontmatter);
   }

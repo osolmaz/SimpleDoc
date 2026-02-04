@@ -27,6 +27,7 @@ import {
 } from "./ui.js";
 import { runMigrate } from "./migrate.js";
 import { runInstallSteps } from "./steps/install.js";
+import { loadConfig } from "../config.js";
 
 type InstallOptions = {
   dryRun: boolean;
@@ -105,6 +106,7 @@ function printMigrationSummary(info: MigrationInfo, includePreview: boolean) {
 
 export async function runInstall(options: InstallOptions): Promise<void> {
   try {
+    const config = await loadConfig(process.cwd());
     const git = createGitClient();
     const repoRootAbs = await git.getRepoRoot(process.cwd());
     const installStatus = await getInstallationStatus(repoRootAbs);
@@ -114,6 +116,9 @@ export async function runInstall(options: InstallOptions): Promise<void> {
     const migrationPlan = await planMigration({
       cwd: repoRootAbs,
       onProgress: scanProgress,
+      docsRoot: config.docsRoot,
+      ignoreGlobs: config.checkIgnore,
+      frontmatterDefaults: config.frontmatterDefaults,
     });
     const migrationInfo = buildMigrationInfo(migrationPlan);
 
@@ -148,7 +153,9 @@ export async function runInstall(options: InstallOptions): Promise<void> {
       }
       if (migrationInfo.hasIssues) {
         printMigrationSummary(migrationInfo, false);
-        process.stdout.write("Run `simpledoc migrate` to fix.\n");
+        process.stdout.write(
+          "Run `npx -y @simpledoc/simpledoc migrate` to fix.\n",
+        );
       } else {
         process.stdout.write(
           "Done. Review with `git status` / `git diff` and commit when ready.\n",
@@ -157,7 +164,7 @@ export async function runInstall(options: InstallOptions): Promise<void> {
       return;
     }
 
-    intro("simpledoc install");
+    intro("npx -y @simpledoc/simpledoc install");
 
     if (installActionsAll.length > 0) {
       const installSel = await runInstallSteps(installStatus);
@@ -194,7 +201,7 @@ export async function runInstall(options: InstallOptions): Promise<void> {
         process.stdout.write(`${limited}\n\n`);
       }
       const migrateNow = await promptConfirm(
-        "Run `simpledoc migrate` now?",
+        "Run `npx -y @simpledoc/simpledoc migrate` now?",
         true,
       );
       if (migrateNow === null) return abort("Operation cancelled.");

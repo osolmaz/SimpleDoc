@@ -114,6 +114,24 @@ test("plan: treats YYYY-MM-DD_ as date-prefixed and normalizes separators", asyn
   ]);
 });
 
+test("plan: allows date-only docs without slug", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/logs/2024-06-01.md", "# Log\n");
+  commitAll(repo.dir, {
+    message: "Add date-only log",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-06-10T12:00:00Z",
+  });
+
+  const plan = await planMigration({ cwd: repo.dir });
+  const renames = plan.actions.filter(
+    (a) => a.type === "rename" && a.from === "docs/logs/2024-06-01.md",
+  );
+  assert.deepEqual(renames, []);
+});
+
 test("plan: keeps YYYY-MM-DD prefix dashes even in capitalized mode", async (t) => {
   const repo = await makeTempRepo();
   t.after(repo.cleanup);
@@ -315,4 +333,48 @@ test("plan: resolves rename collisions by uniquifying targets", async (t) => {
     targets.some((tgt) => tgt.endsWith("-2.md")),
     `Expected one target to end with -2.md, got: ${targets.join(", ")}`,
   );
+});
+
+test("plan: respects docsRoot option", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "documentation/Develop.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add Develop",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    docsRoot: "documentation",
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "documentation/Develop.md",
+      to: "documentation/2024-01-15-develop.md",
+    },
+  ]);
+});
+
+test("plan: ignores paths matched by ignore globs", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/generated/Develop.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add generated doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    ignoreGlobs: ["docs/generated/**"],
+  });
+
+  assert.equal(plan.actions.length, 0);
 });

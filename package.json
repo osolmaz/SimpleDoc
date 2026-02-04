@@ -31,6 +31,7 @@
     "lint": "eslint . --max-warnings 0",
     "prepack": "npm run build",
     "prepare": "husky",
+    "precommit": "npm exec -- lint-staged && npm run -s build && node ./dist/bin/simpledoc.js check",
     "release": "release-it",
     "release:ci": "release-it --ci",
     "migrate": "npm run -s build && node ./dist/bin/simpledoc.js migrate",

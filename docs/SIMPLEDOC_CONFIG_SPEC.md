@@ -85,6 +85,7 @@ Supported keys:
 - **Type:** string
 - **Meaning:** Root directory for SimpleLog daily files.
 - **Resolution:** If relative, it is resolved from the repo root.
+- **Default:** `${docs.root}/logs` (falls back to `docs/logs` if `docs.root` is unset).
 - **Recommendation:** Use a shared path in `simpledoc.json` (e.g. `docs/logs`) and a per-user path in `.simpledoc.local.json` when needed (e.g. `docs/logs/_local/<name>`).
 
 ### simplelog.thresholdMinutes

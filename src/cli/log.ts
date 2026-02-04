@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { createGitClient } from "../git.js";
+import { loadConfig } from "../config.js";
 
 type LogOptions = {
   root?: string;
-  thresholdMinutes: number | string;
+  thresholdMinutes?: number | string;
 };
 
 type LogClock = {
@@ -54,15 +54,6 @@ function parseThresholdMinutes(value: number | string): number {
     }
   }
   throw new Error("--threshold-minutes must be a number >= 0");
-}
-
-async function getBaseDir(): Promise<string> {
-  const git = createGitClient();
-  try {
-    return await git.getRepoRoot(process.cwd());
-  } catch {
-    return process.cwd();
-  }
 }
 
 function getDefaultTimeZone(): string {
@@ -162,7 +153,20 @@ function stripLegacyHeader(content: string): string {
   return lines.slice(idx).join("\n");
 }
 
-function buildFrontmatter(data: Record<string, string>): string {
+type FrontmatterValue = string | string[];
+
+function yamlQuote(value: string): string {
+  const s = String(value).replace(/\r?\n/g, " ").trim();
+  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function formatFrontmatterValue(value: FrontmatterValue): string {
+  if (Array.isArray(value))
+    return `[${value.map((item) => yamlQuote(item)).join(", ")}]`;
+  return value;
+}
+
+function buildFrontmatter(data: Record<string, FrontmatterValue>): string {
   const preferredOrder = [
     "title",
     "author",
@@ -177,7 +181,7 @@ function buildFrontmatter(data: Record<string, string>): string {
     .sort();
   const keys = [...preferred, ...extras];
   const lines = keys
-    .map((key) => `${key}: ${data[key]}`)
+    .map((key) => `${key}: ${formatFrontmatterValue(data[key]!)}`)
     .filter((line) => !line.endsWith(": "));
   return `---\n${lines.join("\n")}\n---\n\n`;
 }
@@ -202,12 +206,14 @@ function normalizeFrontmatter(
   data: Record<string, string>,
   clock: LogClock,
   author: string,
+  titlePrefix?: string,
 ): { data: Record<string, string>; changed: boolean } {
   const next = { ...data };
   let changed = false;
 
   if (!next.title) {
-    next.title = `Daily Log ${clock.date}`;
+    const prefix = titlePrefix?.trim();
+    next.title = prefix ? `${prefix} ${clock.date}` : `Daily Log ${clock.date}`;
     changed = true;
   }
   if (!next.author) {
@@ -277,7 +283,7 @@ function normalizeEntryBody(message: string): string {
   return withoutLeadingBlank.replace(/\n+$/, "");
 }
 
-function buildEntryText(clock: LogClock, message: string): string {
+function buildEntryText(message: string): string {
   return normalizeEntryBody(message);
 }
 
@@ -299,17 +305,21 @@ export async function runLog(
     if (!normalizedMessage.trim())
       throw new Error("Log entry message is required.");
 
-    const thresholdMinutes = parseThresholdMinutes(options.thresholdMinutes);
+    const config = await loadConfig(process.cwd());
+    const thresholdMinutes =
+      options.thresholdMinutes !== undefined
+        ? parseThresholdMinutes(options.thresholdMinutes)
+        : config.simplelog.thresholdMinutes;
     const now = new Date();
 
-    const baseDir = await getBaseDir();
+    const baseDir = config.repoRootAbs;
     const rootDir = options.root
       ? path.resolve(baseDir, options.root)
-      : path.join(baseDir, "docs", "logs");
+      : path.resolve(baseDir, config.simplelog.root);
 
     await fs.mkdir(rootDir, { recursive: true });
 
-    let timeZone = getDefaultTimeZone();
+    let timeZone = config.simplelog.timezone ?? getDefaultTimeZone();
     let clock = getClockForTimeZone(now, timeZone);
     let filePath = path.join(rootDir, `${clock.date}.md`);
 
@@ -364,8 +374,13 @@ export async function runLog(
       ? parsed.body
       : stripLegacyHeader(content);
 
-    const author = resolveAuthor();
-    const normalized = normalizeFrontmatter(parsed.data, clock, author);
+    const author = config.frontmatterDefaults.author ?? resolveAuthor();
+    const normalized = normalizeFrontmatter(
+      parsed.data,
+      clock,
+      author,
+      config.frontmatterDefaults.titlePrefix,
+    );
     const lines = body.split(/\r?\n/);
     const lastSection = findLastSection(lines);
     const lastEntry =
@@ -387,14 +402,21 @@ export async function runLog(
       nextBody = ensureBlankLine(nextBody);
     }
 
-    const entryText = buildEntryText(clock, normalizedMessage);
+    const entryText = buildEntryText(normalizedMessage);
     nextBody += `${entryText}\n`;
 
     const updated = `${clock.date}T${clock.time}${clock.offset}`;
-    const updatedFrontmatter = buildFrontmatter({
+    const updatedFrontmatterData: Record<string, FrontmatterValue> = {
       ...normalized.data,
       updated,
-    });
+    };
+    if (
+      !("tags" in updatedFrontmatterData) &&
+      config.frontmatterDefaults.tags
+    ) {
+      updatedFrontmatterData.tags = config.frontmatterDefaults.tags;
+    }
+    const updatedFrontmatter = buildFrontmatter(updatedFrontmatterData);
     const nextContent = joinFrontmatterAndBody(updatedFrontmatter, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");
     process.stdout.write(`Logged to ${filePath}\n`);

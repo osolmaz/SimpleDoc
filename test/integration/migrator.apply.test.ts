@@ -58,3 +58,30 @@ test("apply: inserts frontmatter using git author and date prefix", async (t) =>
   assert.match(doc, /author: "Alice <alice@example\.com>"/);
   assert.match(doc, /date: "2024-03-02"/);
 });
+
+test("apply: uses frontmatter defaults for author, tags, and title prefix", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/2024-03-02-some-doc.md", "Body\n");
+  commitAll(repo.dir, {
+    message: "Add date-prefixed doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-04-01T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    frontmatterDefaults: {
+      author: "Default <default@example.com>",
+      tags: ["alpha", "beta"],
+      titlePrefix: "Note",
+    },
+  });
+  await runMigrationPlan(plan, { authorOverride: null, authorRewrites: null });
+
+  const doc = await readFile(repo.dir, "docs/2024-03-02-some-doc.md");
+  assert.match(doc, /title: "Note Some Doc"/);
+  assert.match(doc, /author: "Default <default@example\.com>"/);
+  assert.match(doc, /tags: \["alpha", "beta"\]/);
+});

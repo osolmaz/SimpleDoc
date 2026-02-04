@@ -27,6 +27,7 @@ import {
 } from "./ui.js";
 import { runMigrate } from "./migrate.js";
 import { runInstallSteps } from "./steps/install.js";
+import { loadConfig } from "../config.js";
 
 type InstallOptions = {
   dryRun: boolean;
@@ -105,6 +106,7 @@ function printMigrationSummary(info: MigrationInfo, includePreview: boolean) {
 
 export async function runInstall(options: InstallOptions): Promise<void> {
   try {
+    const config = await loadConfig(process.cwd());
     const git = createGitClient();
     const repoRootAbs = await git.getRepoRoot(process.cwd());
     const installStatus = await getInstallationStatus(repoRootAbs);
@@ -114,6 +116,9 @@ export async function runInstall(options: InstallOptions): Promise<void> {
     const migrationPlan = await planMigration({
       cwd: repoRootAbs,
       onProgress: scanProgress,
+      docsRoot: config.docsRoot,
+      ignoreGlobs: config.checkIgnore,
+      frontmatterDefaults: config.frontmatterDefaults,
     });
     const migrationInfo = buildMigrationInfo(migrationPlan);
 

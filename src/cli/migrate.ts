@@ -42,6 +42,7 @@ import { runFrontmatterStep } from "./steps/frontmatter.js";
 import { runInstallSteps } from "./steps/install.js";
 import { detectRootMoves, runRootMoveStep } from "./steps/root-move.js";
 import { runReferenceUpdatesStep } from "./steps/references.js";
+import { loadConfig } from "../config.js";
 
 type StepPreview = {
   title: string;
@@ -59,12 +60,16 @@ type MigrateOptions = {
 function buildDefaultPreviews(opts: {
   plan: MigrationPlan;
   installActions: InstallAction[];
+  docsRoot: string;
 }): StepPreview[] {
   const renameActionsAll = opts.plan.actions.filter(
     (a): a is RenameAction => a.type === "rename",
   );
-  const rootMovesAll = detectRootMoves(renameActionsAll);
-  const lowercaseRenamesAll = detectLowercaseDocRenames(renameActionsAll);
+  const rootMovesAll = detectRootMoves(renameActionsAll, opts.docsRoot);
+  const lowercaseRenamesAll = detectLowercaseDocRenames(
+    renameActionsAll,
+    opts.docsRoot,
+  );
   const categorizedRenames = new Set<string>([
     ...rootMovesAll.map((a) => a.from),
     ...lowercaseRenamesAll.map((a) => a.from),
@@ -85,7 +90,7 @@ function buildDefaultPreviews(opts: {
 
   if (rootMovesAll.length > 0)
     defaultPreviews.push({
-      title: "Relocate root Markdown docs into `docs/` (SimpleDoc convention)",
+      title: `Relocate root Markdown docs into \`${opts.docsRoot}/\` (SimpleDoc convention)`,
       actionsText: formatActions(rootMovesAll),
       actionCount: rootMovesAll.length,
     });
@@ -172,12 +177,18 @@ function printPreviews(previews: StepPreview[]): void {
 
 export async function runMigrate(options: MigrateOptions): Promise<void> {
   try {
+    const config = await loadConfig(process.cwd());
     process.stderr.write(
       "Planning changes (this may take a while on large repos)...\n",
     );
     const hasTty = hasInteractiveTty();
     const scanProgress = createScanProgressBarReporter(hasTty);
-    const planAll = await planMigration({ onProgress: scanProgress });
+    const planAll = await planMigration({
+      onProgress: scanProgress,
+      docsRoot: config.docsRoot,
+      ignoreGlobs: config.checkIgnore,
+      frontmatterDefaults: config.frontmatterDefaults,
+    });
     const installStatus = await getInstallationStatus(planAll.repoRootAbs);
 
     const installActionsAll = await buildDefaultInstallActions(installStatus);
@@ -200,6 +211,7 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
     const defaultPreviews = buildDefaultPreviews({
       plan: planAll,
       installActions: installActionsAll,
+      docsRoot: config.docsRoot,
     });
 
     if (defaultPreviews.length === 0) {
@@ -259,8 +271,11 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
       (a): a is RenameAction => a.type === "rename",
     );
 
-    const rootMovesAll = detectRootMoves(renameActionsAll);
-    const lowercaseRenamesAll = detectLowercaseDocRenames(renameActionsAll);
+    const rootMovesAll = detectRootMoves(renameActionsAll, config.docsRoot);
+    const lowercaseRenamesAll = detectLowercaseDocRenames(
+      renameActionsAll,
+      config.docsRoot,
+    );
     const categorizedRenames = new Set<string>([
       ...rootMovesAll.map((a) => a.from),
       ...lowercaseRenamesAll.map((a) => a.from),
@@ -272,7 +287,7 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
 
     const renameCaseOverrides: Record<string, RenameCaseMode> = {};
 
-    const rootMoveSel = await runRootMoveStep(rootMovesAll);
+    const rootMoveSel = await runRootMoveStep(rootMovesAll, config.docsRoot);
     if (rootMoveSel === null) return abort("Operation cancelled.");
     const includeRootMoves = rootMoveSel.include;
     Object.assign(renameCaseOverrides, rootMoveSel.renameCaseOverrides);
@@ -323,6 +338,9 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
         forceDatePrefixPaths,
         forceUndatedPaths,
         includeCanonicalRenames: Boolean(includeCapitalizedRenames),
+        docsRoot: config.docsRoot,
+        ignoreGlobs: config.checkIgnore,
+        frontmatterDefaults: config.frontmatterDefaults,
       });
     }
 

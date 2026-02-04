@@ -7,6 +7,7 @@ import {
   type ReferenceUpdateAction,
   type RenameAction,
 } from "../migrator.js";
+import { loadConfig } from "../config.js";
 import {
   MAX_STEP_FILE_PREVIEW_LINES,
   createScanProgressBarReporter,
@@ -20,10 +21,16 @@ function getErrorMessage(err: unknown): string {
 
 export async function runCheck(): Promise<void> {
   try {
+    const config = await loadConfig(process.cwd());
     const scanProgress = createScanProgressBarReporter(
       Boolean(process.stdin.isTTY && process.stdout.isTTY),
     );
-    const plan = await planMigration({ onProgress: scanProgress });
+    const plan = await planMigration({
+      onProgress: scanProgress,
+      docsRoot: config.docsRoot,
+      ignoreGlobs: config.checkIgnore,
+      frontmatterDefaults: config.frontmatterDefaults,
+    });
 
     const renames = plan.actions.filter(
       (a): a is RenameAction => a.type === "rename",

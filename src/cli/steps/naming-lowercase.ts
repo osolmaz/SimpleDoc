@@ -17,11 +17,13 @@ function hasDatePrefix(baseName: string): boolean {
 
 export function detectLowercaseDocRenames(
   renameActions: RenameAction[],
+  docsRoot: string,
 ): RenameAction[] {
+  const docsPrefix = `${docsRoot.replace(/\/+$/, "")}/`;
   return renameActions.filter(
     (a) =>
-      a.from.startsWith("docs/") &&
-      a.to.startsWith("docs/") &&
+      a.from.startsWith(docsPrefix) &&
+      a.to.startsWith(docsPrefix) &&
       hasDatePrefix(path.posix.basename(a.to)),
   );
 }

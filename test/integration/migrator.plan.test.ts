@@ -316,3 +316,47 @@ test("plan: resolves rename collisions by uniquifying targets", async (t) => {
     `Expected one target to end with -2.md, got: ${targets.join(", ")}`,
   );
 });
+
+test("plan: respects docsRoot option", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "documentation/Develop.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add Develop",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    docsRoot: "documentation",
+  });
+  const renames = plan.actions.filter((a) => a.type === "rename");
+  assert.deepEqual(renames, [
+    {
+      type: "rename",
+      from: "documentation/Develop.md",
+      to: "documentation/2024-01-15-develop.md",
+    },
+  ]);
+});
+
+test("plan: ignores paths matched by ignore globs", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(repo.dir, "docs/generated/Develop.md", "# Hello\n");
+  commitAll(repo.dir, {
+    message: "Add generated doc",
+    author: "Alice <alice@example.com>",
+    dateIso: "2024-01-15T12:00:00Z",
+  });
+
+  const plan = await planMigration({
+    cwd: repo.dir,
+    ignoreGlobs: ["docs/generated/**"],
+  });
+
+  assert.equal(plan.actions.length, 0);
+});

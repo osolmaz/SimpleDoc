@@ -18,7 +18,7 @@ type InstallOptions = {
 };
 type LogOptions = {
   root?: string;
-  thresholdMinutes: string;
+  thresholdMinutes?: string;
   stdin?: boolean;
 };
 
@@ -99,17 +99,21 @@ export async function runCli(argv: string[]): Promise<void> {
 
   program
     .command("log")
-    .description("Append a SimpleLog entry (Daily Markdown Log) to docs/logs.")
+    .description(
+      "Append a SimpleLog entry (Daily Markdown Log) to the configured log root.",
+    )
     .argument("[message...]", "Entry text to append")
-    .option("--root <dir>", "Root directory for log files (default: docs/logs)")
+    .option(
+      "--root <dir>",
+      "Root directory for log files (default: config or docs/logs)",
+    )
     .option(
       "--stdin",
       "Read entry text from stdin (supports multiline). If stdin is piped, it is read automatically.",
     )
     .option(
       "--threshold-minutes <minutes>",
-      "Start a new time section if the last entry is older than this (default: 5). Use 0 to disable.",
-      "5",
+      "Start a new time section if the last entry is older than this. Use 0 to disable (default: config or 5).",
     )
     .action(async (messageParts: string[], options: LogOptions) => {
       let message = messageParts.join(" ");

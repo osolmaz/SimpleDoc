@@ -134,13 +134,14 @@ EOF
 
 ### Ongoing logging (agent behavior)
 
-Once this skill is active in a repo, the agent SHOULD add a SimpleLog entry for anything noteworthy, such as:
+Once this skill is active in a repo, the agent SHOULD log ongoing progress as it goes (not just significant events). This includes small but real steps, such as:
 
-- A significant change, decision, or discovery.
-- A non-obvious tradeoff or assumption.
-- A failure, error, or workaround.
+- Implementing a change or refactor.
+- Running tests or commands.
+- Updating docs or specs.
+- Learning or clarifying behavior.
 
-Log the entry after completing the action or realizing the insight.
+Log each entry after completing the step.
 
 ## Final Checks Before Submitting
 

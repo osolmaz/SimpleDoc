@@ -19,6 +19,7 @@ type InstallOptions = {
 type LogOptions = {
   root?: string;
   thresholdMinutes: string;
+  stdin?: boolean;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -35,6 +36,22 @@ function shouldDefaultToMigrate(argvRest: string[]): boolean {
   const helpArgs = new Set(["--help", "-h", "help"]);
   const restWithoutHelp = argvRest.filter((a) => !helpArgs.has(a));
   return restWithoutHelp.length > 0;
+}
+
+async function readStdinMessage(fallback: string): Promise<string> {
+  const chunks: string[] = [];
+  return await new Promise((resolve, reject) => {
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      chunks.push(String(chunk));
+    });
+    process.stdin.on("error", reject);
+    process.stdin.on("end", () => {
+      const combined = chunks.join("");
+      const trimmed = combined.trim();
+      resolve(trimmed.length > 0 ? combined : fallback);
+    });
+  });
 }
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -83,15 +100,19 @@ export async function runCli(argv: string[]): Promise<void> {
   program
     .command("log")
     .description("Append a SimpleLog entry (Daily Markdown Log) to docs/logs.")
-    .argument("<message...>", "Entry text to append")
+    .argument("[message...]", "Entry text to append")
     .option("--root <dir>", "Root directory for log files (default: docs/logs)")
+    .option("--stdin", "Read entry text from stdin (supports multiline)")
     .option(
       "--threshold-minutes <minutes>",
       "Start a new time section if the last entry is older than this (default: 5). Use 0 to disable.",
       "5",
     )
     .action(async (messageParts: string[], options: LogOptions) => {
-      const message = messageParts.join(" ");
+      let message = messageParts.join(" ");
+      if (options.stdin) {
+        message = await readStdinMessage(message);
+      }
       await runLog(message, options);
     });
 

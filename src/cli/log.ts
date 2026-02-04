@@ -110,6 +110,16 @@ function buildHeader(clock: LogClock): string {
   return `# ${clock.date}\n> TZ: ${clock.timeZone}\n> Created: ${created}\n\n`;
 }
 
+function formatEntryBody(message: string): string {
+  const normalized = message.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const lines = normalized.split("\n");
+  if (lines.length === 0) return "";
+  const [first, ...rest] = lines;
+  if (rest.length === 0) return first ?? "";
+  const indented = rest.map((line) => `  ${line}`);
+  return [first ?? "", ...indented].join("\n");
+}
+
 export async function runLog(
   message: string,
   options: LogOptions,
@@ -159,7 +169,8 @@ export async function runLog(
     let nextContent = ensureTrailingNewline(content);
     if (needsSection) nextContent += `${currentSection}\n`;
 
-    const entryLine = `- ${clock.time}${clock.offset} ${trimmed}`;
+    const entryBody = formatEntryBody(trimmed);
+    const entryLine = `- ${clock.time}${clock.offset} ${entryBody}`;
     nextContent += `${entryLine}\n`;
 
     await fs.writeFile(filePath, nextContent, "utf8");

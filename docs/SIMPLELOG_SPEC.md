@@ -95,6 +95,7 @@ Examples:
 Multiline entries:
 
 - Continuation lines MUST be indented by two spaces (or more) to remain inside the list item.
+- CLI implementations SHOULD indent newline characters from user input by two spaces so multiline entries remain valid list items.
 
 Example:
 

@@ -72,7 +72,7 @@ Rules:
 
 ## 5) Entry format (appendable, human-readable, parseable)
 
-Each entry is a single line starting with a local-time timestamp **including timezone offset**.
+Each entry is a block of text separated by at least one blank line. The first line of the block MUST start with a local-time timestamp **including timezone offset**.
 
 Required entry prefix:
 
@@ -93,14 +93,17 @@ Examples:
 
 ```md
 09:13+01:00 Standup notes #team
+
 09:14:10+01:00 [WARN] API latency spike service=orders p95_ms=840
+
 14:03:22+01:00 Deployed v1.8.2 #deploy ticket=ABC-123
 ```
 
 Multiline entries:
 
-- Continuation lines MUST be indented by two spaces (or more) to remain associated with the entry above.
-- CLI implementations SHOULD indent newline characters from user input by two spaces so multiline entries remain valid.
+- Continuation lines are allowed and are stored as-is.
+- Continuation lines SHOULD NOT start with a timestamp prefix, because that denotes a new entry.
+- CLI implementations SHOULD NOT alter indentation; they only ensure a blank line separates entries.
 
 Example:
 
@@ -139,7 +142,8 @@ When the CLI writes an entry:
    - no section exists yet, or
    - the last entry is older than the threshold (for example, 5 minutes).
      The new section title MUST be the current local time in `HH:MM` format.
-5. Append the new entry as the last line in the current section, indenting multiline input by two spaces.
+5. Ensure there is a blank line between the last existing line and the new entry.
+6. Append the new entry block using the exact input text (no indentation changes), with the timestamp prefix added to the first line.
 
 This guarantees the tool only appends (no in-file insertion) while keeping session grouping.
 
@@ -159,6 +163,7 @@ created: 2025-12-01T00:00:00+01:00
 ## 09:13
 
 09:13:42+01:00 Checked alerts #ops
+
 09:14:10+01:00 [WARN] Elevated error rate service=api code=502
 notes="started after deploy"
 

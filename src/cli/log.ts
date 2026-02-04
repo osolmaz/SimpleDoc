@@ -258,20 +258,32 @@ function ensureTrailingNewline(text: string): string {
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
+function ensureBlankLine(text: string): string {
+  if (text === "") return "";
+  if (text.endsWith("\n\n")) return text;
+  if (text.endsWith("\n")) return `${text}\n`;
+  return `${text}\n\n`;
+}
+
 function joinFrontmatterAndBody(frontmatter: string, body: string): string {
   const trimmedBody = body.replace(/^\n+/, "");
   if (!trimmedBody) return frontmatter;
   return `${frontmatter}${trimmedBody}`;
 }
 
-function formatEntryBody(message: string): string {
-  const normalized = message.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+function normalizeEntryBody(message: string): string {
+  const normalized = message.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const withoutLeadingBlank = normalized.replace(/^\n+/, "");
+  return withoutLeadingBlank.replace(/\n+$/, "");
+}
+
+function buildEntryText(clock: LogClock, message: string): string {
+  const normalized = normalizeEntryBody(message);
   const lines = normalized.split("\n");
-  if (lines.length === 0) return "";
   const [first, ...rest] = lines;
-  if (rest.length === 0) return first ?? "";
-  const indented = rest.map((line) => `  ${line}`);
-  return [first ?? "", ...indented].join("\n");
+  const head = `${clock.time}${clock.offset} ${first ?? ""}`;
+  if (rest.length === 0) return head;
+  return `${head}\n${rest.join("\n")}`;
 }
 
 export async function runLog(
@@ -279,8 +291,11 @@ export async function runLog(
   options: LogOptions,
 ): Promise<void> {
   try {
-    const trimmed = message.trim();
-    if (!trimmed) throw new Error("Log entry message is required.");
+    const normalizedMessage = message
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n");
+    if (!normalizedMessage.trim())
+      throw new Error("Log entry message is required.");
 
     const thresholdMinutes = parseThresholdMinutes(options.thresholdMinutes);
     const now = new Date();
@@ -343,7 +358,9 @@ export async function runLog(
       parsed = { data: {}, body: "", hasFrontmatter: false };
     }
 
-    const body = parsed.hasFrontmatter ? parsed.body : stripLegacyHeader(content);
+    const body = parsed.hasFrontmatter
+      ? parsed.body
+      : stripLegacyHeader(content);
 
     const author = resolveAuthor();
     const normalized = normalizeFrontmatter(parsed.data, clock, author);
@@ -360,14 +377,15 @@ export async function runLog(
     }
 
     let nextBody = ensureTrailingNewline(body);
+    if (nextBody.trim() !== "") nextBody = ensureBlankLine(nextBody);
     if (needsSection) {
       const sectionTitle = `## ${clock.time.slice(0, 5)}`;
       nextBody += `${sectionTitle}\n`;
+      nextBody = ensureBlankLine(nextBody);
     }
 
-    const entryBody = formatEntryBody(trimmed);
-    const entryLine = `${clock.time}${clock.offset} ${entryBody}`;
-    nextBody += `${entryLine}\n`;
+    const entryText = buildEntryText(clock, normalizedMessage);
+    nextBody += `${entryText}\n`;
 
     const nextContent = joinFrontmatterAndBody(frontmatterText, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");

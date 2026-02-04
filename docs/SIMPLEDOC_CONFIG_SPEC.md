@@ -32,12 +32,53 @@ Top-level object. Current keys:
 
 ```json
 {
+  "docs": {
+    "root": "docs"
+  },
+  "frontmatter": {
+    "defaults": {
+      "author": "Jane Doe <jane@example.com>",
+      "tags": ["docs", "simpledoc"],
+      "titlePrefix": "Daily Log"
+    }
+  },
+  "check": {
+    "ignore": ["docs/generated/**", "docs/_drafts/**"]
+  },
   "simplelog": {
     "root": "docs/logs",
-    "thresholdMinutes": 5
+    "thresholdMinutes": 5,
+    "timezone": "Europe/Berlin"
   }
 }
 ```
+
+### docs.root
+
+- **Type:** string
+- **Meaning:** Root directory for SimpleDoc-managed documentation.
+- **Resolution:** If relative, it is resolved from the repo root.
+- **Default:** `docs`
+- **Notes:** Tools like `simpledoc check` and `simpledoc migrate` SHOULD treat this as the documentation root.
+
+### frontmatter.defaults
+
+- **Type:** object
+- **Meaning:** Default frontmatter values to use when a tool needs to create or insert frontmatter.
+- **Notes:** These values SHOULD only fill missing fields and MUST NOT overwrite existing frontmatter.
+
+Supported keys:
+
+- `author` (string): Default `Name <email>` to use.
+- `tags` (string array): Default tags to add (optional).
+- `titlePrefix` (string): Prefix used when generating titles (optional).
+
+### check.ignore
+
+- **Type:** array of strings
+- **Meaning:** Glob-like patterns to ignore when scanning for violations in `simpledoc check` (and optionally other scans).
+- **Resolution:** Patterns are matched relative to the repo root.
+- **Notes:** Ignored paths SHOULD be skipped entirely during scans.
 
 ### simplelog.root
 
@@ -53,6 +94,13 @@ Top-level object. Current keys:
 - **Default:** 5
 - **Notes:** CLI flags should override this when provided.
 
+### simplelog.timezone
+
+- **Type:** string
+- **Meaning:** IANA timezone ID to use when creating new SimpleLog files and sections.
+- **Default:** System timezone (or `UTC` if unavailable).
+- **Notes:** If a SimpleLog file exists with a `tz` frontmatter value, that value SHOULD take precedence for that file.
+
 ## 5) Usage examples
 
 ### Shared default (committed)
@@ -61,6 +109,18 @@ Top-level object. Current keys:
 
 ```json
 {
+  "docs": {
+    "root": "docs"
+  },
+  "frontmatter": {
+    "defaults": {
+      "author": "Jane Doe <jane@example.com>",
+      "tags": ["docs", "simpledoc"]
+    }
+  },
+  "check": {
+    "ignore": ["docs/generated/**"]
+  },
   "simplelog": {
     "root": "docs/logs"
   }
@@ -73,9 +133,18 @@ Top-level object. Current keys:
 
 ```json
 {
+  "docs": {
+    "root": "docs"
+  },
+  "frontmatter": {
+    "defaults": {
+      "author": "Alice Example <alice@example.com>"
+    }
+  },
   "simplelog": {
     "root": "docs/logs/_local/alice",
-    "thresholdMinutes": 2
+    "thresholdMinutes": 2,
+    "timezone": "Europe/Berlin"
   }
 }
 ```

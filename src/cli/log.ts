@@ -16,8 +16,14 @@ type LogClock = {
   offset: string;
 };
 
-const ENTRY_RE = /^-\s+(\d{2}:\d{2}(?::\d{2})?)(Z|[+-]\d{2}:\d{2})\b/;
-const SECTION_RE = /^##\s+(\d{2}):00\s*$/;
+type Frontmatter = {
+  data: Record<string, string>;
+  body: string;
+  hasFrontmatter: boolean;
+};
+
+const ENTRY_RE = /^-?\s*(\d{2}:\d{2}(?::\d{2})?)(Z|[+-]\d{2}:\d{2})\b/;
+const SECTION_RE = /^##\s+(\d{2}):(\d{2})(?::\d{2})?\s*$/;
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -59,29 +65,176 @@ async function getBaseDir(): Promise<string> {
   }
 }
 
-function getLocalClock(now: Date): LogClock {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const useUTC = timeZone === "UTC";
-  const year = useUTC ? now.getUTCFullYear() : now.getFullYear();
-  const month = useUTC ? now.getUTCMonth() + 1 : now.getMonth() + 1;
-  const day = useUTC ? now.getUTCDate() : now.getDate();
-  const hour = useUTC ? now.getUTCHours() : now.getHours();
-  const minute = useUTC ? now.getUTCMinutes() : now.getMinutes();
-  const second = useUTC ? now.getUTCSeconds() : now.getSeconds();
-  const offsetMinutes = useUTC ? 0 : -now.getTimezoneOffset();
+function getDefaultTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function getClockForTimeZone(now: Date, timeZone: string): LogClock {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(now);
+  const lookup = (type: string): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  const year = Number(lookup("year"));
+  const month = Number(lookup("month"));
+  const day = Number(lookup("day"));
+  const hour = Number(lookup("hour"));
+  const minute = Number(lookup("minute"));
+  const second = Number(lookup("second"));
+
+  if (!year || !month || !day) {
+    throw new Error(`Failed to derive date parts for timezone ${timeZone}`);
+  }
 
   const date = `${year}-${pad2(month)}-${pad2(day)}`;
   const time = `${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offsetMinutes = Math.round((asUtc - now.getTime()) / 60_000);
   const offset = formatOffset(offsetMinutes);
 
   return { timeZone, date, time, offset };
+}
+
+function safeClockForTimeZone(now: Date, timeZone: string): LogClock | null {
+  try {
+    return getClockForTimeZone(now, timeZone);
+  } catch {
+    return null;
+  }
+}
+
+function parseFrontmatter(content: string): Frontmatter {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return { data: {}, body: content, hasFrontmatter: false };
+  }
+
+  let end = -1;
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i] === "---") {
+      end = i;
+      break;
+    }
+  }
+
+  if (end === -1) {
+    return { data: {}, body: content, hasFrontmatter: false };
+  }
+
+  const data: Record<string, string> = {};
+  for (const line of lines.slice(1, end)) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (match) data[match[1]] = match[2];
+  }
+
+  const body = lines.slice(end + 1).join("\n");
+  return { data, body, hasFrontmatter: true };
+}
+
+function stripLegacyHeader(content: string): string {
+  const lines = content.split(/\r?\n/);
+  if (!/^#\s+\d{4}-\d{2}-\d{2}\s*$/.test(lines[0] ?? "")) return content;
+
+  let idx = 1;
+  while (idx < lines.length) {
+    const line = lines[idx] ?? "";
+    if (line.trim() === "") {
+      idx += 1;
+      continue;
+    }
+    if (line.trim().startsWith(">")) {
+      idx += 1;
+      continue;
+    }
+    break;
+  }
+
+  return lines.slice(idx).join("\n");
+}
+
+function buildFrontmatter(data: Record<string, string>): string {
+  const preferredOrder = [
+    "title",
+    "author",
+    "date",
+    "tz",
+    "created",
+    "updated",
+  ];
+  const preferred = preferredOrder.filter((key) => key in data);
+  const extras = Object.keys(data)
+    .filter((key) => !preferredOrder.includes(key))
+    .sort();
+  const keys = [...preferred, ...extras];
+  const lines = keys
+    .map((key) => `${key}: ${data[key]}`)
+    .filter((line) => !line.endsWith(": "));
+  return `---\n${lines.join("\n")}\n---\n\n`;
+}
+
+function resolveAuthor(): string {
+  const name =
+    process.env.GIT_AUTHOR_NAME ||
+    process.env.GIT_COMMITTER_NAME ||
+    process.env.USER ||
+    "Unknown";
+  const email =
+    process.env.GIT_AUTHOR_EMAIL ||
+    process.env.GIT_COMMITTER_EMAIL ||
+    process.env.EMAIL ||
+    "unknown@example.com";
+
+  if (name.includes("<") && name.includes(">")) return name;
+  return `${name} <${email}>`;
+}
+
+function normalizeFrontmatter(
+  data: Record<string, string>,
+  clock: LogClock,
+  author: string,
+): { data: Record<string, string>; changed: boolean } {
+  const next = { ...data };
+  let changed = false;
+
+  if (!next.title) {
+    next.title = `Daily Log ${clock.date}`;
+    changed = true;
+  }
+  if (!next.author) {
+    next.author = author;
+    changed = true;
+  }
+  if (!next.date) {
+    next.date = clock.date;
+    changed = true;
+  }
+  if (!next.tz) {
+    next.tz = clock.timeZone;
+    changed = true;
+  }
+  if (!next.created) {
+    next.created = `${clock.date}T${clock.time}${clock.offset}`;
+    changed = true;
+  }
+
+  return { data: next, changed };
 }
 
 function findLastSection(lines: string[]): string | null {
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     const line = lines[i] ?? "";
     const match = line.match(SECTION_RE);
-    if (match) return `## ${match[1]}:00`;
+    if (match) return `## ${match[1]}:${match[2]}`;
   }
   return null;
 }
@@ -105,9 +258,10 @@ function ensureTrailingNewline(text: string): string {
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
-function buildHeader(clock: LogClock): string {
-  const created = `${clock.date}T${clock.time}${clock.offset}`;
-  return `# ${clock.date}\n> TZ: ${clock.timeZone}\n> Created: ${created}\n\n`;
+function joinFrontmatterAndBody(frontmatter: string, body: string): string {
+  const trimmedBody = body.replace(/^\n+/, "");
+  if (!trimmedBody) return frontmatter;
+  return `${frontmatter}${trimmedBody}`;
 }
 
 function formatEntryBody(message: string): string {
@@ -130,7 +284,6 @@ export async function runLog(
 
     const thresholdMinutes = parseThresholdMinutes(options.thresholdMinutes);
     const now = new Date();
-    const clock = getLocalClock(now);
 
     const baseDir = await getBaseDir();
     const rootDir = options.root
@@ -139,7 +292,10 @@ export async function runLog(
 
     await fs.mkdir(rootDir, { recursive: true });
 
-    const filePath = path.join(rootDir, `${clock.date}.md`);
+    let timeZone = getDefaultTimeZone();
+    let clock = getClockForTimeZone(now, timeZone);
+    let filePath = path.join(rootDir, `${clock.date}.md`);
+
     let content = "";
     let fileExists = false;
 
@@ -151,28 +307,69 @@ export async function runLog(
         throw err;
     }
 
-    if (!fileExists) content = buildHeader(clock);
+    let parsed = parseFrontmatter(content);
 
-    const lines = content.split(/\r?\n/);
-    const currentSection = `## ${clock.time.slice(0, 2)}:00`;
+    if (fileExists && parsed.hasFrontmatter && parsed.data.tz) {
+      const desiredTz = parsed.data.tz;
+      if (desiredTz !== timeZone) {
+        const altClock = safeClockForTimeZone(now, desiredTz);
+        if (altClock) {
+          timeZone = altClock.timeZone;
+          clock = altClock;
+          const altPath = path.join(rootDir, `${clock.date}.md`);
+          if (altPath !== filePath) {
+            filePath = altPath;
+            try {
+              content = await fs.readFile(filePath, "utf8");
+              fileExists = true;
+            } catch (err) {
+              if (
+                !(err instanceof Error) ||
+                !("code" in err) ||
+                err.code !== "ENOENT"
+              )
+                throw err;
+              fileExists = false;
+              content = "";
+            }
+            parsed = parseFrontmatter(content);
+          }
+        }
+      }
+    }
+
+    if (!fileExists) {
+      content = "";
+      parsed = { data: {}, body: "", hasFrontmatter: false };
+    }
+
+    const body = parsed.hasFrontmatter ? parsed.body : stripLegacyHeader(content);
+
+    const author = resolveAuthor();
+    const normalized = normalizeFrontmatter(parsed.data, clock, author);
+    const frontmatterText = buildFrontmatter(normalized.data);
+
+    const lines = body.split(/\r?\n/);
     const lastSection = findLastSection(lines);
     const lastEntry = findLastEntryTime(lines, clock.date);
 
-    let needsSection = false;
-    if (!lastSection || lastSection !== currentSection) needsSection = true;
-
+    let needsSection = !lastSection;
     if (!needsSection && thresholdMinutes > 0 && lastEntry) {
       const diffMs = now.getTime() - lastEntry.getTime();
       if (diffMs >= thresholdMinutes * 60_000) needsSection = true;
     }
 
-    let nextContent = ensureTrailingNewline(content);
-    if (needsSection) nextContent += `${currentSection}\n`;
+    let nextBody = ensureTrailingNewline(body);
+    if (needsSection) {
+      const sectionTitle = `## ${clock.time.slice(0, 5)}`;
+      nextBody += `${sectionTitle}\n`;
+    }
 
     const entryBody = formatEntryBody(trimmed);
-    const entryLine = `- ${clock.time}${clock.offset} ${entryBody}`;
-    nextContent += `${entryLine}\n`;
+    const entryLine = `${clock.time}${clock.offset} ${entryBody}`;
+    nextBody += `${entryLine}\n`;
 
+    const nextContent = joinFrontmatterAndBody(frontmatterText, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");
     process.stdout.write(`Logged to ${filePath}\n`);
   } catch (err) {

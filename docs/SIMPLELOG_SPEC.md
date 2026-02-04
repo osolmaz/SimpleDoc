@@ -17,47 +17,52 @@
 - MUST use LF (`\n`) newlines.
 - SHOULD end with a trailing newline.
 
-## 3) File header
+## 3) Frontmatter (required)
 
-First lines define the day and timezone context.
+Files MUST start with YAML frontmatter that follows SimpleDoc conventions.
 
-Required:
+Required fields:
 
-1. `# YYYY-MM-DD`
-2. `> TZ: <IANA timezone>`
+- `title`: human-readable title for the day.
+- `author`: `Name <email>` (RFC 5322 name-addr format).
+- `date`: `YYYY-MM-DD`.
+- `tz`: IANA timezone ID (e.g., `Europe/Berlin`).
+- `created`: ISO-8601 timestamp with offset.
 
-Optional (recommended):
+Optional fields:
 
-- `> Created: <ISO-8601 timestamp>`
-- `> Updated: <ISO-8601 timestamp>`
+- `updated`: ISO-8601 timestamp with offset.
 
 Example:
 
 ```md
-# 2025-12-01
-
-> TZ: Europe/Berlin
-> Created: 2025-12-01T00:00:00+01:00
+---
+title: Daily Log 2025-12-01
+author: Jane Doe <jane@example.com>
+date: 2025-12-01
+tz: Europe/Berlin
+created: 2025-12-01T00:00:00+01:00
+---
 ```
 
 Notes:
 
-- The file date is interpreted in the header timezone.
+- The file date is interpreted in the `tz` timezone.
 - DST transitions are supported because each entry includes an offset.
 
-## 4) Time sections (hour)
+## 4) Session sections (threshold)
 
-Entries are grouped under hour headings.
+Entries are grouped into session sections. Section titles SHOULD reflect the local time of the first entry in that section.
 
-- **Section heading format (required):** `## HH:00`
+- **Section heading format (required):** `## HH:MM`
   - `HH` is 24-hour, zero-padded (`00-23`).
 
 Example:
 
 ```md
-## 09:00
+## 09:13
 
-## 14:00
+## 14:03
 ```
 
 Rules:
@@ -67,11 +72,11 @@ Rules:
 
 ## 5) Entry format (appendable, human-readable, parseable)
 
-Each entry is a Markdown list item starting with a local-time timestamp **including timezone offset**.
+Each entry is a single line starting with a local-time timestamp **including timezone offset**.
 
 Required entry prefix:
 
-- `- <TIME><OFFSET> `
+- `<TIME><OFFSET> `
 
 Where:
 
@@ -87,22 +92,23 @@ Recommended entry body conventions (all optional):
 Examples:
 
 ```md
-- 09:13+01:00 Standup notes #team
-- 09:14:10+01:00 [WARN] API latency spike service=orders p95_ms=840
-- 14:03:22+01:00 Deployed v1.8.2 #deploy ticket=ABC-123
+09:13+01:00 Standup notes #team
+09:14:10+01:00 [WARN] API latency spike service=orders p95_ms=840
+14:03:22+01:00 Deployed v1.8.2 #deploy ticket=ABC-123
 ```
 
 Multiline entries:
 
-- Continuation lines MUST be indented by two spaces (or more) to remain inside the list item.
-- CLI implementations SHOULD indent newline characters from user input by two spaces so multiline entries remain valid list items.
+- Continuation lines MUST be indented by two spaces (or more) to remain associated with the entry above.
+- CLI implementations SHOULD indent newline characters from user input by two spaces so multiline entries remain valid.
 
 Example:
 
 ```md
-- 14:27:05+01:00 Incident review #ops
-  - suspected cause: cache stampede
-  - mitigation: rate-limit + warmup
+14:27:05+01:00 Incident review #ops
+
+- suspected cause: cache stampede
+- mitigation: rate-limit + warmup
 ```
 
 ## 6) Deriving a full timestamp
@@ -119,51 +125,58 @@ The full timestamp is:
 Example:
 
 - File: `2025-12-01.md`
-- Entry: `- 09:14:10+01:00 ...`
+- Entry: `09:14:10+01:00 ...`
 - Full timestamp: `2025-12-01T09:14:10+01:00`
 
 ## 7) CLI append behavior (normative)
 
 When the CLI writes an entry:
 
-1. Determine "now" in the primary timezone from the header (or CLI config).
+1. Determine "now" in the primary timezone from frontmatter (or CLI config).
 2. Select file by the local date in that timezone: `YYYY-MM-DD.md`.
-3. If the file does not exist, create it with the required header.
-4. Select section by local hour: `## HH:00`.
-5. Append-only behavior:
-   - If the last hour section in the file is not `HH:00`, append a new `## HH:00` at the end.
-   - Append the new entry as the last line in the current section (i.e., at file end after the section header and any existing entries).
-   - A CLI MAY start a new `## HH:00` section when the last entry is older than a configurable threshold (for example, 5 minutes) to separate sessions, even if the hour has not changed.
+3. If the file does not exist, create it with the required frontmatter.
+4. Start a new session section when either:
+   - no section exists yet, or
+   - the last entry is older than the threshold (for example, 5 minutes).
+     The new section title MUST be the current local time in `HH:MM` format.
+5. Append the new entry as the last line in the current section, indenting multiline input by two spaces.
 
-This guarantees the tool only appends (no in-file insertion) while keeping hour grouping.
+This guarantees the tool only appends (no in-file insertion) while keeping session grouping.
 
 ## 8) Complete example file
 
 `2025-12-01.md`
 
 ```md
-# 2025-12-01
+---
+title: Daily Log 2025-12-01
+author: Jane Doe <jane@example.com>
+date: 2025-12-01
+tz: Europe/Berlin
+created: 2025-12-01T00:00:00+01:00
+---
 
-> TZ: Europe/Berlin
-> Created: 2025-12-01T00:00:00+01:00
+## 09:13
 
-## 09:00
+09:13:42+01:00 Checked alerts #ops
+09:14:10+01:00 [WARN] Elevated error rate service=api code=502
+notes="started after deploy"
 
-- 09:13:42+01:00 Checked alerts #ops
-- 09:14:10+01:00 [WARN] Elevated error rate service=api code=502
-  notes="started after deploy"
+## 14:03
 
-## 14:00
+14:03:22+01:00 Deployed v1.8.2 #deploy ticket=ABC-123
 
-- 14:03:22+01:00 Deployed v1.8.2 #deploy ticket=ABC-123
-- 14:27:05+01:00 Incident review #ops
-  - suspected cause: cache stampede
-  - mitigation: rate-limit + warmup
+## 14:27
+
+14:27:05+01:00 Incident review #ops
+
+- suspected cause: cache stampede
+- mitigation: rate-limit + warmup
 ```
 
 ## 9) Multiple timezones in one file (optional)
 
 If you need multiple timezones in one file (rare, but possible):
 
-- Keep the header TZ as the default.
-- Allow an optional zone ID after the offset, e.g. `- 10:00:00+01:00 Europe/Berlin ...`.
+- Keep the frontmatter `tz` as the default.
+- Allow an optional zone ID after the offset, e.g. `10:00:00+01:00 Europe/Berlin ...`.

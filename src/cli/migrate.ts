@@ -256,7 +256,7 @@ export async function runMigrate(options: MigrateOptions): Promise<void> {
       return;
     }
 
-    intro("simpledoc migrate");
+    intro("npx -y @simpledoc/simpledoc migrate");
 
     if (planAll.dirty && !options.force) {
       const contDirty = await promptConfirm(

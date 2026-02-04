@@ -59,7 +59,7 @@ Top-level object. Current keys:
 - **Meaning:** Root directory for SimpleDoc-managed documentation.
 - **Resolution:** If relative, it is resolved from the repo root.
 - **Default:** `docs`
-- **Notes:** Tools like `simpledoc check` and `simpledoc migrate` SHOULD treat this as the documentation root.
+- **Notes:** Tools like `npx -y @simpledoc/simpledoc check` and `npx -y @simpledoc/simpledoc migrate` SHOULD treat this as the documentation root.
 
 ### frontmatter.defaults
 
@@ -76,7 +76,7 @@ Supported keys:
 ### check.ignore
 
 - **Type:** array of strings
-- **Meaning:** Glob-like patterns to ignore when scanning for violations in `simpledoc check` (and optionally other scans).
+- **Meaning:** Glob-like patterns to ignore when scanning for violations in `npx -y @simpledoc/simpledoc check` (and optionally other scans).
 - **Resolution:** Patterns are matched relative to the repo root.
 - **Notes:** Ignored paths SHOULD be skipped entirely during scans.
 

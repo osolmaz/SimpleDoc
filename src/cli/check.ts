@@ -81,7 +81,7 @@ export async function runCheck(): Promise<void> {
       process.stdout.write(`${limited}\n\n`);
     }
 
-    process.stdout.write("Run `simpledoc migrate` to fix.\n");
+    process.stdout.write("Run `npx -y @simpledoc/simpledoc migrate` to fix.\n");
     process.exitCode = 1;
   } catch (err) {
     process.stderr.write(`${getErrorMessage(err)}\n`);

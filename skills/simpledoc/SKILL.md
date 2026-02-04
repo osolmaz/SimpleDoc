@@ -83,6 +83,55 @@ SimpleDoc Guidelines:
 - Choose a concise, action-oriented `title`.
 - Populate `tags` when it improves discoverability; omit the line if not needed.
 
+## Daily Logs (SimpleLog)
+
+Use SimpleLog for daily logs. The spec lives at `docs/SIMPLELOG_SPEC.md`.
+
+### Where logs live
+
+- Default location: `docs/logs/YYYY-MM-DD.md`.
+- The CLI writes to `<repo-root>/docs/logs/` by default when inside a git repo.
+
+### Create a daily log entry (recommended)
+
+Use the CLI to create the file and append entries:
+
+```bash
+simpledoc log "Entry text here"
+```
+
+Notes:
+
+- The CLI creates the daily log file if missing, including required frontmatter.
+- It adds a new session section only when the threshold is exceeded (default 5 minutes).
+- It preserves the text you type and inserts a blank line before each new entry.
+
+### Multiline entries
+
+Pipe or heredoc input (stdin) for multiline entries:
+
+```bash
+cat <<'EOF' | simpledoc log
+Multiline entry.
+- line two
+- line three
+EOF
+```
+
+You can also use `--stdin` explicitly:
+
+```bash
+simpledoc log --stdin <<'EOF'
+Another multiline entry.
+EOF
+```
+
+### Manual edits (if needed)
+
+- Keep the YAML frontmatter intact (`title`, `author`, `date`, `tz`, `created`, optional `updated`).
+- Ensure a blank line separates entries.
+- Session sections must be `## HH:MM` (local time of the first entry in that section).
+
 ## Final Checks Before Submitting
 
 - [ ] Filename follows the `YYYY-MM-DD-…` pattern (date uses dashes) and lives in the correct directory.

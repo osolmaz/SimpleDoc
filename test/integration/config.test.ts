@@ -60,3 +60,49 @@ test("config: defaults simplelog root to docs root", async (t) => {
   assert.equal(config.docsRoot, "documentation");
   assert.equal(config.simplelog.root, "documentation/logs");
 });
+
+test("config: rejects invalid value types", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(
+    repo.dir,
+    "simpledoc.json",
+    JSON.stringify(
+      {
+        docs: { root: 123 },
+        check: { ignore: "docs/generated/**" },
+        simplelog: { thresholdMinutes: "5" },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+
+  await assert.rejects(
+    () => loadConfig(repo.dir),
+    /docs\.root must be a string/,
+  );
+});
+
+test("config: rejects invalid nested values", async (t) => {
+  const repo = await makeTempRepo();
+  t.after(repo.cleanup);
+
+  await writeFile(
+    repo.dir,
+    "simpledoc.json",
+    JSON.stringify(
+      {
+        frontmatter: { defaults: { author: 42, tags: ["ok", 1] } },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+
+  await assert.rejects(
+    () => loadConfig(repo.dir),
+    /frontmatter\.defaults\.author must be a string/,
+  );
+});

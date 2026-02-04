@@ -132,6 +132,16 @@ EOF
 - Ensure a blank line separates entries.
 - Session sections must be `## HH:MM` (local time of the first entry in that section).
 
+### Ongoing logging (agent behavior)
+
+Once this skill is active in a repo, the agent SHOULD add a SimpleLog entry for anything noteworthy, such as:
+
+- A significant change, decision, or discovery.
+- A non-obvious tradeoff or assumption.
+- A failure, error, or workaround.
+
+Log the entry after completing the action or realizing the insight.
+
 ## Final Checks Before Submitting
 
 - [ ] Filename follows the `YYYY-MM-DD-…` pattern (date uses dashes) and lives in the correct directory.

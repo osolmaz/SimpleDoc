@@ -31,6 +31,7 @@ Required fields:
 
 Optional fields:
 
+- `last_section`: ISO-8601 timestamp with offset (start time of the latest section).
 - `updated`: ISO-8601 timestamp with offset.
 
 Example:
@@ -42,6 +43,7 @@ author: Jane Doe <jane@example.com>
 date: 2025-12-01
 tz: Europe/Berlin
 created: 2025-12-01T00:00:00+01:00
+last_section: 2025-12-01T09:13:00+01:00
 ---
 ```
 
@@ -131,8 +133,9 @@ When the CLI writes an entry (config is resolved via `simpledoc.json` / `.simple
 3. If the file does not exist, create it with the required frontmatter.
 4. Start a new session section when either:
    - no section exists yet, or
-   - the last entry is older than the threshold (for example, 5 minutes).
+   - the last section start time is older than the threshold (for example, 5 minutes).
      The new section title MUST be the current local time in `HH:MM` format.
+     CLI implementations SHOULD store the section start time in frontmatter as `last_section` and use it for threshold comparisons.
 5. Ensure there is a blank line between the last existing line and the new entry.
 6. Append the new entry block using the exact input text (no indentation changes).
 
@@ -149,6 +152,7 @@ author: Jane Doe <jane@example.com>
 date: 2025-12-01
 tz: Europe/Berlin
 created: 2025-12-01T00:00:00+01:00
+last_section: 2025-12-01T14:27:00+01:00
 ---
 
 ## 09:13

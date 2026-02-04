@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { runLog } from "../../src/cli/log.js";
+import { parseFrontmatterBlock } from "../../src/frontmatter.js";
 import { makeTempRepo, readFile, writeFile } from "../helpers/repo.js";
 
 async function withMockedDate(
@@ -83,4 +84,7 @@ test("log: starts a new section after the threshold", async (t) => {
   assert.match(content, /First entry/);
   assert.match(content, /Second entry/);
   assert.match(content, /Third entry/);
+
+  const parsed = parseFrontmatterBlock(content);
+  assert.equal(parsed.data.last_section, "2026-02-04T12:10:00Z");
 });

@@ -22,7 +22,6 @@ type LogClock = {
   offset: string;
 };
 
-const ENTRY_RE = /^-?\s*(\d{2}:\d{2}(?::\d{2})?)(Z|[+-]\d{2}:\d{2})\b/;
 const SECTION_RE = /^##\s+(\d{2}):(\d{2})(?::\d{2})?\s*$/;
 
 function getErrorMessage(err: unknown): string {
@@ -175,25 +174,20 @@ function normalizeFrontmatter(
   return { data: next, changed };
 }
 
-function findLastSection(lines: string[]): string | null {
+type SectionTimestamp = { date: Date; value: string };
+
+function findLastSectionTimestamp(
+  lines: string[],
+  clock: LogClock,
+): SectionTimestamp | null {
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     const line = lines[i] ?? "";
     const match = line.match(SECTION_RE);
-    if (match) return `## ${match[1]}:${match[2]}`;
-  }
-  return null;
-}
-
-function findLastEntryTime(lines: string[], date: string): Date | null {
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const line = lines[i] ?? "";
-    const match = line.match(ENTRY_RE);
     if (!match) continue;
-    const time = match[1];
-    const offset = match[2];
-    const iso = `${date}T${time}${offset}`;
-    const parsed = new Date(iso);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const time = `${match[1]}:${match[2]}:00`;
+    const value = `${clock.date}T${time}${clock.offset}`;
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return { date: parsed, value };
   }
   return null;
 }
@@ -321,15 +315,16 @@ export async function runLog(
       config.frontmatterDefaults.titlePrefix,
     );
     const lines = body.split(/\r?\n/);
-    const lastSection = findLastSection(lines);
-    const lastEntry =
-      parseIsoTimestamp(parsed.data.updated) ??
-      parseIsoTimestamp(parsed.data.created) ??
-      findLastEntryTime(lines, clock.date);
+    const lastSectionFromHeading = findLastSectionTimestamp(lines, clock);
+    const lastSectionFromFrontmatter = parseIsoTimestamp(
+      parsed.data.last_section,
+    );
+    const lastSection =
+      lastSectionFromFrontmatter ?? lastSectionFromHeading?.date ?? null;
 
-    let needsSection = !lastSection || !lastEntry;
-    if (!needsSection && thresholdMinutes > 0 && lastEntry) {
-      const diffMs = now.getTime() - lastEntry.getTime();
+    let needsSection = !lastSection;
+    if (!needsSection && thresholdMinutes > 0 && lastSection) {
+      const diffMs = now.getTime() - lastSection.getTime();
       if (diffMs >= thresholdMinutes * 60_000) needsSection = true;
     }
 
@@ -349,6 +344,14 @@ export async function runLog(
       ...normalized.data,
       updated,
     };
+    if (needsSection) {
+      updatedFrontmatterData.last_section = updated;
+    } else if (
+      !("last_section" in updatedFrontmatterData) &&
+      lastSectionFromHeading
+    ) {
+      updatedFrontmatterData.last_section = lastSectionFromHeading.value;
+    }
     if (
       !("tags" in updatedFrontmatterData) &&
       config.frontmatterDefaults.tags

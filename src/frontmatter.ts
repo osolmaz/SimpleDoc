@@ -14,6 +14,7 @@ export const SIMPLELOG_FRONTMATTER_ORDER = [
   "date",
   "tz",
   "created",
+  "last_section",
   "updated",
   "tags",
 ];

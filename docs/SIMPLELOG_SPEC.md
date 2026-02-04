@@ -124,7 +124,7 @@ Example:
 
 ## 7) CLI append behavior (normative)
 
-When the CLI writes an entry:
+When the CLI writes an entry (config is resolved via `simpledoc.json` / `.simpledoc.local.json` if present; see `docs/SIMPLEDOC_CONFIG_SPEC.md`):
 
 1. Determine "now" in the primary timezone from frontmatter (or CLI config).
 2. Select file by the local date in that timezone: `YYYY-MM-DD.md`.

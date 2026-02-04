@@ -91,6 +91,7 @@ Use SimpleLog for daily logs. The spec lives at `docs/SIMPLELOG_SPEC.md`.
 
 - Default location: `docs/logs/YYYY-MM-DD.md`.
 - The CLI writes to `<repo-root>/docs/logs/` by default when inside a git repo.
+- You can set a shared default in `simpledoc.json` and override locally in `.simpledoc.local.json` (see `docs/SIMPLEDOC_CONFIG_SPEC.md`).
 
 ### Create a daily log entry (recommended)
 

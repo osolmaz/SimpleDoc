@@ -12,6 +12,7 @@ SimpleDoc defines two types of files:
 2. **Capitalized files**: SHOULD be used for general documents that are not tied to a specific time, e.g. `README.md`.
 
 SimpleDoc also includes optional subspecs for specialized document types, such as the SimpleLog daily log format in `docs/SIMPLELOG_SPEC.md`.
+Configuration for tooling can be shared in `simpledoc.json` and overridden per-user in `.simpledoc.local.json` (see `docs/SIMPLEDOC_CONFIG_SPEC.md`).
 
 ### 1. Date-prefixed files
 

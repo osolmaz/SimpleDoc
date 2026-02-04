@@ -278,12 +278,14 @@ function normalizeEntryBody(message: string): string {
 }
 
 function buildEntryText(clock: LogClock, message: string): string {
-  const normalized = normalizeEntryBody(message);
-  const lines = normalized.split("\n");
-  const [first, ...rest] = lines;
-  const head = `${clock.time}${clock.offset} ${first ?? ""}`;
-  if (rest.length === 0) return head;
-  return `${head}\n${rest.join("\n")}`;
+  return normalizeEntryBody(message);
+}
+
+function parseIsoTimestamp(value: string | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
 }
 
 export async function runLog(
@@ -364,13 +366,14 @@ export async function runLog(
 
     const author = resolveAuthor();
     const normalized = normalizeFrontmatter(parsed.data, clock, author);
-    const frontmatterText = buildFrontmatter(normalized.data);
-
     const lines = body.split(/\r?\n/);
     const lastSection = findLastSection(lines);
-    const lastEntry = findLastEntryTime(lines, clock.date);
+    const lastEntry =
+      parseIsoTimestamp(parsed.data.updated) ??
+      parseIsoTimestamp(parsed.data.created) ??
+      findLastEntryTime(lines, clock.date);
 
-    let needsSection = !lastSection;
+    let needsSection = !lastSection || !lastEntry;
     if (!needsSection && thresholdMinutes > 0 && lastEntry) {
       const diffMs = now.getTime() - lastEntry.getTime();
       if (diffMs >= thresholdMinutes * 60_000) needsSection = true;
@@ -387,7 +390,12 @@ export async function runLog(
     const entryText = buildEntryText(clock, normalizedMessage);
     nextBody += `${entryText}\n`;
 
-    const nextContent = joinFrontmatterAndBody(frontmatterText, nextBody);
+    const updated = `${clock.date}T${clock.time}${clock.offset}`;
+    const updatedFrontmatter = buildFrontmatter({
+      ...normalized.data,
+      updated,
+    });
+    const nextContent = joinFrontmatterAndBody(updatedFrontmatter, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");
     process.stdout.write(`Logged to ${filePath}\n`);
   } catch (err) {

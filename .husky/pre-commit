@@ -1,3 +1,1 @@
-npm exec -- lint-staged
-npm run -s build
-node ./dist/bin/simpledoc.js check
+npm run -s precommit

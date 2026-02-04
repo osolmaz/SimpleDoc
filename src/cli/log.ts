@@ -3,7 +3,12 @@ import path from "node:path";
 import process from "node:process";
 
 import { loadConfig } from "../config.js";
-import { buildFrontmatter, type FrontmatterValue } from "../frontmatter.js";
+import {
+  buildFrontmatter,
+  type FrontmatterValue,
+  parseFrontmatterBlock,
+  SIMPLELOG_FRONTMATTER_ORDER,
+} from "../frontmatter.js";
 
 type LogOptions = {
   root?: string;
@@ -15,12 +20,6 @@ type LogClock = {
   date: string;
   time: string;
   offset: string;
-};
-
-type Frontmatter = {
-  data: Record<string, string>;
-  body: string;
-  hasFrontmatter: boolean;
 };
 
 const ENTRY_RE = /^-?\s*(\d{2}:\d{2}(?::\d{2})?)(Z|[+-]\d{2}:\d{2})\b/;
@@ -105,34 +104,6 @@ function safeClockForTimeZone(now: Date, timeZone: string): LogClock | null {
   }
 }
 
-function parseFrontmatter(content: string): Frontmatter {
-  const lines = content.split(/\r?\n/);
-  if (lines[0] !== "---") {
-    return { data: {}, body: content, hasFrontmatter: false };
-  }
-
-  let end = -1;
-  for (let i = 1; i < lines.length; i += 1) {
-    if (lines[i] === "---") {
-      end = i;
-      break;
-    }
-  }
-
-  if (end === -1) {
-    return { data: {}, body: content, hasFrontmatter: false };
-  }
-
-  const data: Record<string, string> = {};
-  for (const line of lines.slice(1, end)) {
-    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (match) data[match[1]] = match[2];
-  }
-
-  const body = lines.slice(end + 1).join("\n");
-  return { data, body, hasFrontmatter: true };
-}
-
 function stripLegacyHeader(content: string): string {
   const lines = content.split(/\r?\n/);
   if (!/^#\s+\d{4}-\d{2}-\d{2}\s*$/.test(lines[0] ?? "")) return content;
@@ -153,16 +124,6 @@ function stripLegacyHeader(content: string): string {
 
   return lines.slice(idx).join("\n");
 }
-
-const FRONTMATTER_ORDER = [
-  "title",
-  "author",
-  "date",
-  "tz",
-  "created",
-  "updated",
-  "tags",
-];
 
 function resolveAuthor(): string {
   const name =
@@ -312,7 +273,7 @@ export async function runLog(
         throw err;
     }
 
-    let parsed = parseFrontmatter(content);
+    let parsed = parseFrontmatterBlock(content);
 
     if (fileExists && parsed.hasFrontmatter && parsed.data.tz) {
       const desiredTz = parsed.data.tz;
@@ -337,7 +298,7 @@ export async function runLog(
               fileExists = false;
               content = "";
             }
-            parsed = parseFrontmatter(content);
+            parsed = parseFrontmatterBlock(content);
           }
         }
       }
@@ -395,7 +356,7 @@ export async function runLog(
       updatedFrontmatterData.tags = config.frontmatterDefaults.tags;
     }
     const updatedFrontmatter = buildFrontmatter(updatedFrontmatterData, {
-      order: FRONTMATTER_ORDER,
+      order: SIMPLELOG_FRONTMATTER_ORDER,
     });
     const nextContent = joinFrontmatterAndBody(updatedFrontmatter, nextBody);
     await fs.writeFile(filePath, nextContent, "utf8");

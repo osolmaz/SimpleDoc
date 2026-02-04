@@ -1,5 +1,23 @@
 export type FrontmatterValue = string | string[];
 
+export type ParsedFrontmatter = {
+  data: Record<string, string>;
+  body: string;
+  hasFrontmatter: boolean;
+};
+
+export const DOC_FRONTMATTER_ORDER = ["title", "author", "date", "tags"];
+
+export const SIMPLELOG_FRONTMATTER_ORDER = [
+  "title",
+  "author",
+  "date",
+  "tz",
+  "created",
+  "updated",
+  "tags",
+];
+
 function yamlQuote(value: string): string {
   const s = String(value).replace(/\r?\n/g, " ").trim();
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -39,4 +57,32 @@ export function buildFrontmatter(
   });
 
   return `---\n${lines.join("\n")}\n---\n\n`;
+}
+
+export function parseFrontmatterBlock(content: string): ParsedFrontmatter {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return { data: {}, body: content, hasFrontmatter: false };
+  }
+
+  let end = -1;
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i] === "---") {
+      end = i;
+      break;
+    }
+  }
+
+  if (end === -1) {
+    return { data: {}, body: content, hasFrontmatter: false };
+  }
+
+  const data: Record<string, string> = {};
+  for (const line of lines.slice(1, end)) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (match) data[match[1]] = match[2];
+  }
+
+  const body = lines.slice(end + 1).join("\n");
+  return { data, body, hasFrontmatter: true };
 }

@@ -13,7 +13,7 @@ import {
 } from "./naming.js";
 import { normalizeDocsRoot } from "./paths.js";
 import { buildIgnoreMatcher } from "./ignore.js";
-import { buildFrontmatter } from "./frontmatter.js";
+import { buildFrontmatter, DOC_FRONTMATTER_ORDER } from "./frontmatter.js";
 
 export type { RenameCaseMode } from "./naming.js";
 
@@ -194,7 +194,7 @@ function buildDocFrontmatter({
 }): string {
   return buildFrontmatter(
     { title, author, date, tags },
-    { order: ["title", "author", "date", "tags"], quoteStrings: true },
+    { order: DOC_FRONTMATTER_ORDER, quoteStrings: true },
   );
 }
 

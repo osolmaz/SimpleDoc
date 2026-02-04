@@ -11,6 +11,8 @@ SimpleDoc defines two types of files:
 1. **Date-prefixed files**: SHOULD be used for most documents, e.g. `docs/2025-12-22-an-awesome-doc.md`.
 2. **Capitalized files**: SHOULD be used for general documents that are not tied to a specific time, e.g. `README.md`.
 
+SimpleDoc also includes optional subspecs for specialized document types, such as the SimpleLog daily log format in `docs/SIMPLELOG_SPEC.md`.
+
 ### 1. Date-prefixed files
 
 - Date-prefixed Markdown files SHOULD be used for most documents that are tied to a specific time.

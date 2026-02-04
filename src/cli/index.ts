@@ -102,7 +102,10 @@ export async function runCli(argv: string[]): Promise<void> {
     .description("Append a SimpleLog entry (Daily Markdown Log) to docs/logs.")
     .argument("[message...]", "Entry text to append")
     .option("--root <dir>", "Root directory for log files (default: docs/logs)")
-    .option("--stdin", "Read entry text from stdin (supports multiline)")
+    .option(
+      "--stdin",
+      "Read entry text from stdin (supports multiline). If stdin is piped, it is read automatically.",
+    )
     .option(
       "--threshold-minutes <minutes>",
       "Start a new time section if the last entry is older than this (default: 5). Use 0 to disable.",
@@ -110,7 +113,7 @@ export async function runCli(argv: string[]): Promise<void> {
     )
     .action(async (messageParts: string[], options: LogOptions) => {
       let message = messageParts.join(" ");
-      if (options.stdin) {
+      if (options.stdin || !process.stdin.isTTY) {
         message = await readStdinMessage(message);
       }
       await runLog(message, options);

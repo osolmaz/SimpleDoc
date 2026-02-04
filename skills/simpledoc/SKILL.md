@@ -134,14 +134,13 @@ EOF
 
 ### Ongoing logging (agent behavior)
 
-Once this skill is active in a repo, the agent SHOULD log ongoing progress as it goes (not just significant events). This includes small but real steps, such as:
+Once this skill is active in a repo, the agent SHOULD log anything worth noting as it goes. This includes:
 
-- Implementing a change or refactor.
-- Running tests or commands.
-- Updating docs or specs.
-- Learning or clarifying behavior.
+- Significant changes, decisions, discoveries, tradeoffs, and assumptions.
+- Ongoing progress and small but real steps (changes, commands, tests, doc updates).
+- Errors, failures, workarounds, and clarifications.
 
-Log each entry after completing the step.
+Log each entry after completing the step or realizing the insight.
 
 ## Final Checks Before Submitting
 

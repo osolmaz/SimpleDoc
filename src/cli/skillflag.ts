@@ -1,1 +1,1 @@
-export { handleSkillflag } from "skillflag/dist/index.js";
+export { handleSkillflag } from "skillflag";

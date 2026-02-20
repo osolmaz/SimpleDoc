@@ -2,6 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@simpledoc/simpledoc.svg)](https://www.npmjs.com/package/@simpledoc/simpledoc)
 [![npm downloads](https://img.shields.io/npm/dm/@simpledoc/simpledoc.svg)](https://www.npmjs.com/package/@simpledoc/simpledoc)
+[![CI](https://github.com/osolmaz/SimpleDoc/actions/workflows/ci.yml/badge.svg)](https://github.com/osolmaz/SimpleDoc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > Lightweight standard for organizing Markdown documentation in codebases

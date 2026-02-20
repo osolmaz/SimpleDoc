@@ -50,12 +50,6 @@ Install the bundled agent skill (interactive wizard picks your agent and scope):
 npx -y @simpledoc/simpledoc --skill install simpledoc
 ```
 
-Or install without interaction:
-
-```bash
-npx -y @simpledoc/simpledoc --skill install simpledoc --agent codex --scope repo
-```
-
 ## Migrate
 
 Run the migrator from the repo root to rename/move docs and add frontmatter as needed:

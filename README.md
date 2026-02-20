@@ -1,5 +1,9 @@
 # SimpleDoc
 
+[![npm version](https://img.shields.io/npm/v/@simpledoc/simpledoc.svg)](https://www.npmjs.com/package/@simpledoc/simpledoc)
+[![npm downloads](https://img.shields.io/npm/dm/@simpledoc/simpledoc.svg)](https://www.npmjs.com/package/@simpledoc/simpledoc)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > Lightweight standard for organizing Markdown documentation in codebases
 
 SimpleDoc defines a small set of rules for the naming and placement of Markdown files in a codebase, agnostic of any documentation framework.
@@ -40,10 +44,16 @@ Configuration for tooling can be shared in `simpledoc.json` and overridden per-u
 
 ## Install
 
-Install the bundled agent skill + `AGENTS.md` instructions (no doc migrations):
+Install the bundled agent skill (interactive wizard picks your agent and scope):
 
 ```bash
-npx -y @simpledoc/simpledoc install
+npx -y @simpledoc/simpledoc --skill install simpledoc
+```
+
+Or install without interaction:
+
+```bash
+npx -y @simpledoc/simpledoc --skill install simpledoc --agent codex --scope repo
 ```
 
 ## Migrate
